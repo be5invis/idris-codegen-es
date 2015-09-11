@@ -1,0 +1,3 @@
+package js
+
+modules = Js.IO
