@@ -15,23 +15,61 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Data.Char
+import Data.Set (Set)
+import qualified Data.Set as Set
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.List (nub)
 
 
+used_functions_exp :: SExp -> [Name]
+used_functions_exp x =
+  nub $ used x
+  where
+    used (SV _) = []
+    used (SApp _ n _) = [n]
+    used (SLet _ a b) = used a ++ used b
+    used (SUpdate _ a) = used a
+    used (SCon _ _ _ _) = []
+    used (SCase _ _ a) = concatMap used_alt a
+    used (SChkCase _ a) = concatMap used_alt a
+    used (SProj _ _) = []
+    used (SConst _) = []
+    used (SForeign _ _ _) = []
+    used (SOp _ _) = []
+    used SNothing = []
+    used (SError _) = []
+    used x = error $ "Instruction " ++ show x ++ " missing clause in used"
+    
+    used_alt (SConCase _ _ _ _ a) = used a
+    used_alt (SConstCase _ a) = used a
+    used_alt (SDefaultCase a) = used a
+
+
+used_functions :: Map Name SDecl -> [Name] -> Set Name
+used_functions _ [] = Set.empty
+used_functions alldefs (next_name:rest) =
+  let new_names = case Map.lookup next_name alldefs of
+                    Just (SFun _ _ _ e) -> filter (\x -> Map.member x alldefs) $ used_functions_exp e
+                    _                   -> []
+  in Set.insert next_name $ used_functions (Map.delete next_name alldefs) (rest ++ new_names) 
+      
+ 
+  
 
 codegenJs :: CodeGenerator
 codegenJs ci = do 
-  let out = T.intercalate "\n" $ map doCodegen (simpleDecls ci)
+  let sdecls         = simpleDecls ci
+      used           = used_functions (Map.fromList sdecls) [sMN 0 "runMain"]
+      filtered_decls = filter (\(k,v) -> Set.member k used ) sdecls
+      out            = T.intercalate "\n" $ map doCodegen filtered_decls
+  putStrLn $ show $ includes ci
   TIO.writeFile (outputFile ci) $ T.concat [ out, "\n"
                                            , start, "\n"
                                            , "\n\n"
                                            ]
                       
 start = jsName (sMN 0 "runMain") `T.append` "();"
-
-helpers = T.concat [ errCode, "\n" 
-                   , mkStr, "\n"
-                   , doAppend, "\n"
-                   ]
 
 
 jsName :: Name -> Text
@@ -73,26 +111,32 @@ cgBody ret (SCon _ t n args) =
 cgBody ret (SCase _ e alts) = 
   cgBody ret (SChkCase e alts)
 cgBody ret (SChkCase e alts) =
-  let scrvar = cgVar e 
-      scr    = if any conCase alts then JsArrayProj (JsInt 0)  scrvar else scrvar 
-  in JsSwitchCase scr (map (cgAlt ret scrvar) alts)  
+  let scrvar     = cgVar e 
+      scr        = if any conCase alts then JsArrayProj (JsInt 0)  scrvar else scrvar 
+      (as, de) = cgAlts ret scrvar alts
+  in JsSwitchCase scr as de
   where conCase (SConCase _ _ _ _ _) = True
         conCase _ = False
 cgBody ret (SConst c) = ret $ cgConst c
 cgBody ret (SOp op args) = ret $ cgOp op (map cgVar args)
 cgBody ret SNothing = ret $ JsInt 0
-cgBody ret (SError x) = ret $ JsError $ T.pack $ x
+cgBody ret (SError x) = JsError $ T.pack $ x
+cgBody ret (SForeign _ (FStr code) args ) =
+  ret $ JsForeign (T.pack code) (map (cgVar . snd) args)
 cgBody ret x = error $ "Instruction " ++ show x ++ " not compilable yet"
 
-cgAlt :: (JsAST -> JsAST) -> JsAST -> SAlt -> (JsAST, JsAST)
-cgAlt ret scrvar (SConstCase t exp) = 
-  (cgConst t, cgBody ret exp)
-cgAlt ret scrvar (SDefaultCase exp) = 
-  (JsVar "default", cgBody ret exp)
-cgAlt ret scrvar (SConCase lv t n args exp) =
-  (JsInt t, JsSeq (project 1 lv args) $ cgBody ret exp)
+cgAlts :: (JsAST -> JsAST) -> JsAST -> [SAlt] -> ([(JsAST, JsAST)], Maybe JsAST)
+cgAlts ret scrvar ((SConstCase t exp):r) =
+  let (ar, d) = cgAlts ret scrvar r
+  in ((cgConst t, cgBody ret exp):ar, d)
+cgAlts ret scrvar ((SConCase lv t n args exp):r) =
+  let (ar, d) = cgAlts ret scrvar r
+  in ((JsInt t, JsSeq (project 1 lv args) $ cgBody ret exp):ar, d)
    where project i v [] = JsEmpty
          project i v (n : ns) = JsSeq (JsDecVar (loc v) (JsArrayProj (JsInt i) scrvar) ) $ project (i + 1) (v + 1) ns
+cgAlts ret scrvar ((SDefaultCase exp):r) = 
+  ([], Just $ cgBody ret exp)
+cgAlts _ _ [] = ([],Nothing)
 
 cgVar :: LVar -> JsAST
 cgVar (Loc i) = JsVar $ loc i 
@@ -100,48 +144,46 @@ cgVar (Glob n) = JsVar $ jsName n
 
 cgConst :: Const -> JsAST
 cgConst (I i) = JsInt i
---cgConst (Ch i) = show (ord i) -- Treat Char as ints, because PHP treats them as Strings...
---cgConst (BI i) = show i
+cgConst (BI i) = JsInteger i
+cgConst (Ch c) = JsStr $ T.pack $ [c]
 cgConst (Str s) = JsStr $ T.pack s
---cgConst TheWorld = "0"
---cgConst x | isTypeConst x = "0"
+cgConst (Fl f) = error "error FL"
+cgConst (B8 x) = error "error B8"
+cgConst (B16 x) = error "error B16"
+cgConst (B32 x) = error "error B32"
+cgConst (B64 x) = error "error B64"
+cgConst x | isTypeConst x = JsInt 0
 cgConst x = error $ "Constant " ++ show x ++ " not compilable yet"
 
 cgOp :: PrimFn -> [JsAST] -> JsAST
 cgOp (LPlus (ATInt _)) [l, r] =
-  JsPlus l r
-{-cgOp (LMinus (ATInt _)) [l, r] 
-     = "(" ++ l ++ " - " ++ r ++ ")"
-cgOp (LTimes (ATInt _)) [l, r] 
-     = "(" ++ l ++ " * " ++ r ++ ")"
-cgOp (LEq (ATInt _)) [l, r] 
-     = "(" ++ l ++ " == " ++ r ++ ")"
-cgOp (LSLt (ATInt _)) [l, r] 
-     = "(" ++ l ++ " < " ++ r ++ ")"
-cgOp (LSLe (ATInt _)) [l, r] 
-     = "(" ++ l ++ " <= " ++ r ++ ")"
-cgOp (LSGt (ATInt _)) [l, r] 
-     = "(" ++ l ++ " > " ++ r ++ ")"
-cgOp (LSGe (ATInt _)) [l, r] 
-     = "(" ++ l ++ " >= " ++ r ++ ")"
-cgOp LStrEq [l,r] = "(" ++ l ++ " == " ++ r ++ ")"
-cgOp LStrRev [x] = "strrev(" ++ x ++ ")"
-cgOp LStrLen [x] = "strlen(utf8_decode(" ++ x ++ "))"
-cgOp LStrHead [x] = "ord(" ++ x ++ "[0])"
-cgOp LStrIndex [x, y] = "ord(" ++ x ++ "[" ++ y ++ "])"
-cgOp LStrTail [x] = "substr(" ++ x ++ ", 1)"
-
-cgOp (LIntStr _) [x] = "\"" ++ x ++ "\""
+  JsBinOp "+" l r
+cgOp (LMinus (ATInt _)) [l, r] = JsBinOp "-" l r
+cgOp (LTimes (ATInt _)) [l, r] = JsBinOp "*" l r
+cgOp (LEq (ATInt _)) [l, r] = JsBinOp "==" l r
+cgOp (LSLt (ATInt _)) [l, r] = JsBinOp "<" l r
+cgOp (LSLe (ATInt _)) [l, r] = JsBinOp "<=" l r
+cgOp (LSGt (ATInt _)) [l, r] = JsBinOp ">" l r
+cgOp (LSGe (ATInt _)) [l, r] = JsBinOp ">=" l r
+cgOp LStrEq [l,r] = JsBinOp "==" l r
+--cgOp LStrRev [x] = "strrev(" ++ x ++ ")"
+cgOp LStrLen [x] = JsForeign "$0.length" [x]
+cgOp LStrHead [x] = JsArrayProj (JsInt 0) x
+cgOp LStrIndex [x, y] = JsArrayProj y x
+cgOp LStrTail [x] = JsApp "String.slice" [x, JsInt 1]
+cgOp LStrLt [l, r] = JsBinOp "<" l r
+cgOp (LIntStr _) [x] = JsBinOp "+" x (JsStr "")
+{-
 cgOp (LChInt _) [x] = x
 cgOp (LIntCh _) [x] = x
 cgOp (LSExt _ _) [x] = x
 cgOp (LTrunc _ _) [x] = x
-cgOp LWriteStr [_,str] = "idris_writeStr(" ++ str ++ ")"
-cgOp LReadStr [_] = "idris_readStr()"
-cgOp LStrConcat [l,r] = "idris_append(" ++ l ++ ", " ++ r ++ ")"
-cgOp LStrCons [l,r] = "idris_append(chr(" ++ l ++ "), " ++ r ++ ")" -}
-cgOp (LExternal n) _ = JsError $ T.pack $ "EXPERNAL OPERATOR " ++ show n ++ " NOT IMPLEMENTED!!!!"
-cgOp op exps = error ("Operator " ++ show op ++ " not implemented")
+-}
+cgOp LWriteStr [_,str] = JsApp "console.log" [str]
+--cgOp LReadStr [_] = "idris_readStr()"
+cgOp LStrConcat [l,r] = JsBinOp "+" l r
+cgOp LStrCons [l,r] = JsBinOp "+" l r
+cgOp op exps = error ("Operator " ++ show (op, exps) ++ " not implemented")
 
 
 

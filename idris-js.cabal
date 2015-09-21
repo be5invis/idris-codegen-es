@@ -31,6 +31,7 @@ Executable idris-js
                 , mtl
                 , transformers
                 , text
+                , uniplate
 
   other-modules: IRTS.CodegenJs
 

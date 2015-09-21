@@ -1,2 +1,3 @@
 dist
 *.ibc
+node_modules

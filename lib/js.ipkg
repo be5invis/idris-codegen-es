@@ -1,0 +1,6 @@
+package js
+
+opts ="-p contrib -p lightyear"
+
+modules = Js.IO
+        , Js.Browser
