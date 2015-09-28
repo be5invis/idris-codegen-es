@@ -15,8 +15,7 @@ build-type:          Simple
 -- extra-source-files:  
 cabal-version:       >=1.10
 
-Extra-source-files:
-		rts/*
+Data-files:       rts/browser_lib_b.js
 
 Executable idris-js
   Main-is:        Main.hs

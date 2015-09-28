@@ -1,5 +1,6 @@
 for f in tests/*.idr
 do
-  rm ${f%%.idr}.ibc
-  idris -p js  --codegen js $f  -o ${f%%.idr}
+  echo compiling $f
+  rm ${f%%.idr}.ibc 2>/dev/null
+  idris -p js  --codegen js $f  -o ${f%%.idr}.js
 done

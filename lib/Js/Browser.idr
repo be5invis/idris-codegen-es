@@ -6,7 +6,7 @@ import public Js.IO
 union : Ord a => SortedSet a -> SortedSet a -> SortedSet a
 union x y = fromList $ SortedSet.toList x ++ SortedSet.toList y
 
-%include js "Js/browser_lib_b.js"
+%include js "browser_lib_b.js"
 
 
 debug : a -> JSIO ()

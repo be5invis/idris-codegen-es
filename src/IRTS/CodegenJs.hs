@@ -20,6 +20,9 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.List (nub)
+import Paths_idris_js (getDataDir)
+import System.Directory (doesFileExist)
+import System.FilePath (combine)
 
 
 used_functions_exp :: SExp -> [Name]
@@ -55,7 +58,20 @@ used_functions alldefs (next_name:rest) =
   in Set.insert next_name $ used_functions (Map.delete next_name alldefs) (rest ++ new_names) 
       
  
+get_include :: FilePath -> IO Text
+get_include p = do
+  dtdir <- getDataDir
+  let prts = dtdir `combine` "rts" `combine` p
+  e <- doesFileExist $ prts
+  if e then
+    TIO.readFile prts
+    else TIO.readFile p
   
+
+get_includes :: [FilePath] -> IO Text
+get_includes l = do
+  incs <- mapM get_include l
+  return $ T.intercalate "\n\n" incs 
 
 codegenJs :: CodeGenerator
 codegenJs ci = do 
@@ -63,8 +79,9 @@ codegenJs ci = do
       used           = used_functions (Map.fromList sdecls) [sMN 0 "runMain"]
       filtered_decls = filter (\(k,v) -> Set.member k used ) sdecls
       out            = T.intercalate "\n" $ map doCodegen filtered_decls
-  putStrLn $ show $ includes ci
-  TIO.writeFile (outputFile ci) $ T.concat [ out, "\n"
+  includes <- get_includes $ includes ci
+  TIO.writeFile (outputFile ci) $ T.concat [ includes
+                                           , out, "\n"
                                            , start, "\n"
                                            , "\n\n"
                                            ]
@@ -121,8 +138,8 @@ cgBody ret (SConst c) = ret $ cgConst c
 cgBody ret (SOp op args) = ret $ cgOp op (map cgVar args)
 cgBody ret SNothing = ret $ JsInt 0
 cgBody ret (SError x) = JsError $ T.pack $ x
-cgBody ret (SForeign _ (FStr code) args ) =
-  ret $ JsForeign (T.pack code) (map (cgVar . snd) args)
+cgBody ret x@(SForeign dres (FStr code) args ) =
+  cgForeignRes ret dres $ JsForeign (T.pack code) (map cgForeignArg (map (\(x,y) -> (x, cgVar y)) args))
 cgBody ret x = error $ "Instruction " ++ show x ++ " not compilable yet"
 
 cgAlts :: (JsAST -> JsAST) -> JsAST -> [SAlt] -> ([(JsAST, JsAST)], Maybe JsAST)
@@ -137,6 +154,31 @@ cgAlts ret scrvar ((SConCase lv t n args exp):r) =
 cgAlts ret scrvar ((SDefaultCase exp):r) = 
   ([], Just $ cgBody ret exp)
 cgAlts _ _ [] = ([],Nothing)
+
+apply_name = jsName $ sMN 0 "APPLY"
+eval_name = jsName $ sMN 0 "EVAL"
+
+cgForeignArg :: (FDesc, JsAST) -> JsAST
+cgForeignArg (FCon (UN "JsInt"), v) = v
+cgForeignArg (FCon (UN "JsString"), v) = v
+cgForeignArg (FCon (UN "JsPtr"), v) = v
+cgForeignArg (FCon (UN "JsUnit"), v) = v
+cgForeignArg (FApp (UN "JsFun") [_, _, a, b], f) = 
+  JsAFun ["x"] $ cgForeignRes JsReturn b $ JsApp apply_name [f, cgForeignArg (a, JsVar "x")]
+cgForeignArg (FApp (UN "JsFunIO") [_, _, a, b], f) = 
+  JsAFun ["x"] $ cgForeignRes JsReturn b $ evalJSIO $ JsApp apply_name [f, cgForeignArg (a, JsVar "x")]
+cgForeignArg (desc, _) = error $ "Foreign arg type " ++ show desc ++ " not supported yet." 
+
+evalJSIO :: JsAST -> JsAST
+evalJSIO x =
+  JsApp eval_name [JsApp apply_name [x, JsInt 0]]
+
+cgForeignRes :: (JsAST -> JsAST) -> FDesc -> JsAST -> JsAST
+cgForeignRes ret (FCon (UN "JsInt")) x = ret x
+cgForeignRes ret (FCon (UN "JsUnit")) x = ret x
+cgForeignRes ret (FCon (UN "JsString")) x = ret x
+cgForeignRes ret (FCon (UN "JsPtr")) x = ret x
+cgForeignRes ret desc val =  error $ "Foreign return type " ++ show desc ++ " not supported yet."
 
 cgVar :: LVar -> JsAST
 cgVar (Loc i) = JsVar $ loc i 
@@ -170,13 +212,13 @@ cgOp LStrEq [l,r] = JsBinOp "==" l r
 cgOp LStrLen [x] = JsForeign "$0.length" [x]
 cgOp LStrHead [x] = JsArrayProj (JsInt 0) x
 cgOp LStrIndex [x, y] = JsArrayProj y x
-cgOp LStrTail [x] = JsApp "String.slice" [x, JsInt 1]
+cgOp LStrTail [x] = JsMethod x "slice" [JsInt 1]
 cgOp LStrLt [l, r] = JsBinOp "<" l r
 cgOp (LIntStr _) [x] = JsBinOp "+" x (JsStr "")
-{-
-cgOp (LChInt _) [x] = x
-cgOp (LIntCh _) [x] = x
+cgOp (LChInt _) [x] = JsMethod x "charCodeAt" [JsInt 0]
 cgOp (LSExt _ _) [x] = x
+{-
+cgOp (LIntCh _) [x] = x
 cgOp (LTrunc _ _) [x] = x
 -}
 cgOp LWriteStr [_,str] = JsApp "console.log" [str]

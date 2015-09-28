@@ -11,6 +11,7 @@ data JsAST = JsEmpty
            | JsFun Text [Text] JsAST
            | JsReturn JsAST
            | JsApp Text [JsAST]
+           | JsMethod JsAST Text [JsAST]
            | JsVar Text
            | JsSeq JsAST JsAST
            | JsDecVar Text JsAST
@@ -23,6 +24,7 @@ data JsAST = JsEmpty
            | JsError Text
            | JsBinOp Text JsAST JsAST
            | JsForeign Text [JsAST]
+           | JsAFun [Text] JsAST
             deriving (Show, Eq)
 
 
@@ -41,6 +43,7 @@ jsAst2Text (JsFun name args body) =
            ]
 jsAst2Text (JsReturn x) = T.concat [ "return ", jsAst2Text x]
 jsAst2Text (JsApp name args) = T.concat [name, "(", T.intercalate ", " $ map jsAst2Text args, ")"]
+jsAst2Text (JsMethod obj name args) = T.concat [jsAst2Text obj, ".", name, "(", T.intercalate ", " $ map jsAst2Text args, ")"]
 jsAst2Text (JsVar x) = x
 jsAst2Text (JsSeq x y) = T.concat [jsAst2Text x, ";\n", jsAst2Text y]
 jsAst2Text (JsDecVar name exp) = T.concat [ "var ", name, " = ", jsAst2Text exp]
@@ -63,6 +66,7 @@ jsAst2Text (JsForeign code args) =
   let args_repl c i [] = c
       args_repl c i (t:r) = args_repl (T.replace ("%" `T.append` T.pack (show i)) t c) (i+1) r
   in args_repl code 0 (map jsAst2Text args)
+jsAst2Text (JsAFun l body) = T.concat ["(function(", T.intercalate ", " l, "){", jsAst2Text body, "})"]
 
 
 case2Text :: (JsAST, JsAST) -> Text
