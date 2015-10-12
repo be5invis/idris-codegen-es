@@ -202,18 +202,18 @@ cgOp (LPlus (ATInt _)) [l, r] =
   JsBinOp "+" l r
 cgOp (LMinus (ATInt _)) [l, r] = JsBinOp "-" l r
 cgOp (LTimes (ATInt _)) [l, r] = JsBinOp "*" l r
-cgOp (LEq (ATInt _)) [l, r] = JsBinOp "==" l r
-cgOp (LSLt (ATInt _)) [l, r] = JsBinOp "<" l r
-cgOp (LSLe (ATInt _)) [l, r] = JsBinOp "<=" l r
-cgOp (LSGt (ATInt _)) [l, r] = JsBinOp ">" l r
-cgOp (LSGe (ATInt _)) [l, r] = JsBinOp ">=" l r
-cgOp LStrEq [l,r] = JsBinOp "==" l r
+cgOp (LEq (ATInt _)) [l, r] = JsB2I $ JsBinOp "==" l r
+cgOp (LSLt (ATInt _)) [l, r] = JsB2I $ JsBinOp "<" l r
+cgOp (LSLe (ATInt _)) [l, r] = JsB2I $ JsBinOp "<=" l r
+cgOp (LSGt (ATInt _)) [l, r] = JsB2I $ JsBinOp ">" l r
+cgOp (LSGe (ATInt _)) [l, r] = JsB2I $ JsBinOp ">=" l r
+cgOp LStrEq [l,r] = JsB2I $ JsBinOp "==" l r
 --cgOp LStrRev [x] = "strrev(" ++ x ++ ")"
 cgOp LStrLen [x] = JsForeign "$0.length" [x]
 cgOp LStrHead [x] = JsArrayProj (JsInt 0) x
 cgOp LStrIndex [x, y] = JsArrayProj y x
 cgOp LStrTail [x] = JsMethod x "slice" [JsInt 1]
-cgOp LStrLt [l, r] = JsBinOp "<" l r
+cgOp LStrLt [l, r] = JsB2I $ JsBinOp "<" l r
 cgOp (LIntStr _) [x] = JsBinOp "+" x (JsStr "")
 cgOp (LChInt _) [x] = JsMethod x "charCodeAt" [JsInt 0]
 cgOp (LSExt _ _) [x] = x
