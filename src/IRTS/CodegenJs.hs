@@ -20,7 +20,6 @@ import qualified Data.Set as Set
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.List (nub)
-import Paths_idris_js (getDataDir)
 import System.Directory (doesFileExist)
 import System.FilePath (combine)
 
@@ -59,14 +58,7 @@ used_functions alldefs (next_name:rest) =
       
  
 get_include :: FilePath -> IO Text
-get_include p = do
-  dtdir <- getDataDir
-  let prts = dtdir `combine` "rts" `combine` p
-  e <- doesFileExist $ prts
-  if e then
-    TIO.readFile prts
-    else TIO.readFile p
-  
+get_include p = TIO.readFile p   
 
 get_includes :: [FilePath] -> IO Text
 get_includes l = do
