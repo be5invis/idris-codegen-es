@@ -1,10 +1,15 @@
 import Js.Browser
 
-page : App () String
+vw : String -> View String
+vw s = div [ textinput
+           , text s
+           ]
+
+page : App String String
 page = MkApp
         ""
-        (\x => text "ola")
-        (\x, y => "")
+        vw
+        (\x, y => x)
 
 main : JSIO ()
 main = do

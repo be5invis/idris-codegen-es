@@ -20,3 +20,5 @@ jscall : (fname : String) -> (ty : Type) ->
           {auto fty : FTy FFI_Js [] ty} -> ty
 jscall fname ty = foreign FFI_Js fname ty
 
+jsdebug : a -> JSIO ()
+jsdebug x = jscall "console.debug(%0)" (Ptr -> JSIO ()) (believe_me x)

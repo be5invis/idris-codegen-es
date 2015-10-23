@@ -4,7 +4,10 @@ import public Js.IO
 
 
 removeChild : Ptr -> Int -> JSIO ()
-removeChild node pos = jscall "%0.removeChild(%0.childNodes($1) )" (Ptr -> Int -> JSIO ()) node pos
+removeChild node pos = jscall "%0.removeChild(%0.childNodes[%1] )" (Ptr -> Int -> JSIO ()) node pos
+
+childNode : Ptr -> Int -> JSIO Ptr
+childNode node pos = jscall "%0.childNodes[%1]" (Ptr -> Int -> JSIO Ptr) node pos
 
 createTextNode : String -> JSIO Ptr
 createTextNode s = jscall "document.createTextNode(%0)" (String -> JSIO Ptr) s
@@ -13,7 +16,7 @@ appendChild : Ptr -> Ptr -> JSIO ()
 appendChild node child = jscall "%0.appendChild(%1)" (Ptr -> Ptr -> JSIO ()) node child
 
 parent : Ptr -> JSIO Ptr
-parent node = jscall "%0.parent" (Ptr -> JSIO Ptr) node
+parent node = jscall "%0.parentNode" (Ptr -> JSIO Ptr) node
 
 body : JSIO Ptr
 body = jscall "document.body" (() -> JSIO Ptr) ()
@@ -27,61 +30,85 @@ createElement s = jscall "document.createElement(%0)" (String -> JSIO Ptr) s
 setAttribute : Ptr -> (String, String) -> JSIO ()
 setAttribute node (k,v) = jscall "%0.setAttribute(%1, %2)" (Ptr -> String -> String -> JSIO ()) node k v
 
+addEventListener : Ptr -> String -> (Ptr -> JSIO ()) -> JSIO ()
+addEventListener node evt action = jscall "%0.addEventListener(%1, %2)" (Ptr -> String -> (Ptr -> JSIO ()) -> JSIO ()) node evt action
 
-{-
-js_create_array : List (JSIO Ptr) -> JSIO Ptr
-js_create_array [] = jscall "[]" (JSIO Ptr)
-js_create_array (h::r) = do
-  ph <- h
-  pr <- js_create_array r
-  jscall "[%0].concat(%1)" (Ptr -> Ptr -> JSIO Ptr) ph pr
 
-data Attribute = TextAttribute String String
-               | OnEventAttribute String (Ptr -> JSIO ())
 
-  -}
-
-data HtmlTree = HtmlText String
-              | HtmlContainer String (List (String, String)) (List HtmlTree)
-
-{-
 record Event where
   constructor MkEvent
   targetValue : String
-  -}
+
+data HtmlTree : Type where
+  HtmlText : String -> List (String, String) -> HtmlTree
+  HtmlElement : String -> List (String, String) -> List (String, Event -> JSIO ()) -> (List HtmlTree) -> HtmlTree
 
 abstract
 data View : Type -> Type  where 
-  VText  : String -> View a
---  HtmlNode  : String -> List Attribute -> List (String, Event -> a) -> List (Html a) -> Html a
+  VText  : String -> List (String, String) -> View a
+  VNode  : String -> List (String, String) -> List (String, Event -> a) -> List (View a) -> View a
 
-view2htmlTree : View a -> HtmlTree
-view2htmlTree (VText s) = HtmlText s
+evtListen_v2h : (a -> JSIO ()) -> (String, Event -> a) -> (String, Event -> JSIO ())
+evtListen_v2h onEvent (s, f) = (s, onEvent . f)
 
-htmltree2js : HtmlTree -> JSIO Ptr
-htmltree2js (HtmlText s) = createTextNode s
-htmltree2js (HtmlContainer tag attrs childs) =
+view2htmlTree : (a -> JSIO ()) -> View a -> HtmlTree
+view2htmlTree onEvent (VText s attrs) =
+  HtmlText s attrs
+view2htmlTree onEvent (VNode tag attrs eventListeners childs) =
+  HtmlElement tag attrs (map (evtListen_v2h onEvent) eventListeners) (map (view2htmlTree onEvent) childs)
+
+makeEvent : Ptr -> JSIO Event
+makeEvent x =
   do
-    node <- createElement tag
-    addChilds node childs
-    addAttrs node attrs
-    return node
-  where
-    addAttrs : Ptr -> List (String, String) -> JSIO ()
-    addAttrs node [] =
-      pure ()
-    addAttrs node (t::r) =
-      do
-        setAttribute node t
-        addAttrs node r
-    addChilds : Ptr -> List HtmlTree -> JSIO ()
-    addChilds node [] =
-      pure ()
-    addChilds node (t::r) =
-     do
-       c <- htmltree2js t
-       appendChild node c
-       addChilds node r
+    tv <- jscall "%0.target.value + ''" (Ptr -> JSIO String) x
+    pure $ MkEvent tv
+
+evtL2js : (Event -> JSIO ()) -> Ptr -> JSIO ()
+evtL2js g x = 
+  do
+    e <- makeEvent x
+    g e
+
+addListeners : Ptr -> List (String, Event -> JSIO ()) -> JSIO ()
+addListeners node [] =
+  pure ()
+addListeners node ((n,f)::r)=
+  do
+    addEventListener node n (evtL2js f)   
+
+addAttrs : Ptr -> List (String, String) -> JSIO ()
+addAttrs node [] =
+  pure ()
+addAttrs node (t::r) =
+  do
+    setAttribute node t
+    addAttrs node r
+
+mutual
+  addChilds : Ptr -> List HtmlTree -> JSIO ()
+  addChilds node [] =
+    pure ()
+  addChilds node (t::r) =
+   do
+     c <- htmltree2js t
+     appendChild node c
+     addChilds node r
+
+  htmltree2js : HtmlTree -> JSIO Ptr
+  htmltree2js (HtmlText s attrs) =
+    do
+      t <- createTextNode s
+      node <- createElement "span"
+      addAttrs node attrs
+      appendChild node t
+      return node
+  htmltree2js (HtmlElement tag attrs eventListeners childs ) =
+    do
+      node <- createElement tag
+      addChilds node childs
+      addAttrs node attrs
+      addListeners node eventListeners
+      return node
 
 
 {-
@@ -113,76 +140,6 @@ record App a b where
   update : a -> b -> b
 
 
-public
-text : String -> View a
-text x = VText x
-
-{-
-public
-div : List (Html a) -> Html a
-div x = HtmlNode "div" [] [] x
-
-public
-button : a -> Html a -> Html a
-button val lbl =
-  HtmlNode "button"
-           []
-           [("onclick", \x => val)]
-           [lbl]
-
-public
-textinput : Html String
-textinput = 
-  HtmlNode "input"
-           [TextAttribute "type" "text"]
-           [("onchange", targetValue)]
-           []
-
-callback2attribute : (String, Event -> a) -> Attribute
-callback2attribute (n, f)=
-  OnEventAttribute n g
-  where
-    g x = do
-      tval <- jscall "%0.target.value" (Ptr -> JSIO String) x
-      let msg = f $ MkEvent tval
-      upd <- believe_me <$> jscall "b$update" ( () -> JSIO Ptr ) ()
-      upd msg
-
-
-render : Html a -> JSIO Ptr
-render (HtmlText s) = jscall "b$node('span', {}, %0)" (String -> JSIO Ptr) s
-render (HtmlNode tag attrs callbacks childs) = do
-    childs' <- js_create_array $ map render childs
-    props' <- mk_props $ attrs ++ map callback2attribute callbacks
-    jscall "b$node(%0, %1, %2)" (String -> Ptr -> Ptr -> JSIO Ptr) tag props' childs'
-  where
-    mk_key_prop : Attribute -> JSIO Ptr
-    mk_key_prop (TextAttribute s p) = jscall "[%0, %1]" (String -> String -> JSIO Ptr) s p
-    mk_key_prop (OnEventAttribute s p) = jscall "[%0, %1]" (String -> (Ptr -> JSIO ()) -> JSIO Ptr) s p
-
-    mk_props : List Attribute -> JSIO Ptr
-    mk_props x = do
-      lprops <- (js_create_array $ map mk_key_prop x)
-      jscall "b$list2obj(%0)" (Ptr -> JSIO Ptr) lprops
-
-
-setDisplay : Html a -> JSIO ()
-setDisplay e = do
-  r <- render e 
-  jscall "b$setDisplay(%0)" (Ptr -> JSIO ()) r
-
-
-stepUpdate : App a b -> a -> JSIO ()
-stepUpdate ap x = 
-  do
-    st <- getState
-    let new_st = (update ap) x st
-    setState new_st
-    setDisplay $ view ap new_st
-  where
-    getState = believe_me <$> jscall "b$state" ( () -> JSIO Ptr) ()
-    -}
-
 setState : b -> JSIO ()
 setState z = jscall "b$state = %0" (Ptr -> JSIO ()) (believe_me z)
 
@@ -201,7 +158,8 @@ mutual
       diffUpdateChilds node (pos + 1) or []
   diffUpdateChilds node pos (ot::or) (nt::nr) =
     do
-      diffUpdateTree node ot nt
+      c <- childNode node pos
+      diffUpdateTree c ot nt
       diffUpdateChilds node (pos + 1) or nr
   diffUpdateChilds node pos [] (nt::nr) =
     do
@@ -213,39 +171,96 @@ mutual
 
 
   diffUpdateTree : Ptr -> HtmlTree -> HtmlTree -> JSIO ()
-  diffUpdateTree node (HtmlContainer oldtag oldAttrs oldChilds) newTree@(HtmlContainer newtag newAttrs newChilds) = 
+  diffUpdateTree node (HtmlText oldString oldAttrs) newTxt@(HtmlText newString newAttrs) =
+    if oldString == newString then
+      pure ()
+      else do
+        new <- htmltree2js newTxt
+        p <- parent node
+        replaceChild p new node
+  diffUpdateTree node (HtmlElement oldtag oldAttrs oldEventListeners oldChilds) newTree@(HtmlElement newtag newAttrs newEventListeners newChilds) = 
     if oldtag == newtag then 
       do
         diffUpdateChilds node 0 oldChilds newChilds
       else do
         new <- htmltree2js newTree
         p <- parent node
-        replaceChild p node new
-
+        replaceChild p new node
 
 
 updateView : View a -> JSIO ()
-updateView z = do
-  let newtree = HtmlContainer "div" [("id", "root")] [view2htmlTree z]
-  lastTree <- getLastTree
-  root <- jscall "document.getElementById('root')" (() -> JSIO Ptr) ()
-  diffUpdateTree root lastTree newtree
-  setLastTree newtree
+updateView z =
+  do
+    let newtree = HtmlElement "div" [("id", "root")] [] [view2htmlTree main_updade z]
+    lastTree <- getLastTree
+    root <- jscall "document.getElementById('root')" (() -> JSIO Ptr) ()
+    diffUpdateTree root lastTree newtree
+    setLastTree newtree
+  where
+    main_updade x =
+      do
+        upd <- believe_me <$> jscall "b$update" (() -> JSIO ()) ()
+        upd x
+  
 
+stepUpdate : App a b -> a -> JSIO ()
+stepUpdate ap x = 
+  do
+    st <- getState
+    let new_st = (update ap) x st
+    setState new_st
+    updateView $ view ap new_st
+  where
+    getState = believe_me <$> jscall "b$state" ( () -> JSIO Ptr) ()
 
 public
 runApp : App a b -> JSIO ()
 runApp ap =
   do
     setState $ state ap
-    let v0 = HtmlContainer "div" [("id", "root")] []
+    let v0 = HtmlElement "div" [("id", "root")] [] []
     v0d <- htmltree2js v0
     b <- body
     appendChild b v0d
     setLastTree $ v0
+    setUpdate $ stepUpdate ap
     updateView $ view ap $ state ap
-    --setUpdate $ stepUpdate ap
-    --setDisplay $ view ap $ state ap
---  where
---    setUpdate : (a -> JSIO ()) -> JSIO ()
---    setUpdate z = jscall "b$update = %0" (Ptr -> JSIO ()) (believe_me z)
+  where
+    setUpdate : (a -> JSIO ()) -> JSIO ()
+    setUpdate z = jscall "b$update = %0" (Ptr -> JSIO ()) (believe_me z)
+
+
+
+
+-------- view primitives --------
+
+public
+text : String -> View a
+text x = VText x []
+
+public
+div : List (View a) -> View a
+div x = VNode "div" [] [] x
+
+
+public
+textinput : View String
+textinput = 
+  VNode "input"
+        [("type", "text")]
+        [("change", targetValue)]
+        []
+
+{-
+
+public
+button : a -> Html a -> Html a
+button val lbl =
+  HtmlNode "button"
+           []
+           [("onclick", \x => val)]
+           [lbl]
+
+
+-}
+
