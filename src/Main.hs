@@ -16,7 +16,7 @@ import Paths_idris_js
 data Opts = Opts { inputs :: [FilePath],
                    output :: FilePath }
 
-showUsage = do putStrLn "Usage: idris-js <ibc-files> [-o <output-file>]"
+showUsage = do putStrLn "Usage: idris-codegen-js <ibc-files> [-o <output-file>]"
                exitWith ExitSuccess
 
 getOpts :: IO Opts

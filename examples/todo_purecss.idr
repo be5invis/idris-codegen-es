@@ -10,7 +10,7 @@ upd : TodoAction -> List String -> List String
 upd (TodoAdd x) y = y ++ [x]
 upd (TodoRemove i) y =  take i y  ++ drop (i+1) y
 
-vw : List String -> Html TodoAction
+vw : List String -> View TodoAction
 vw x = 
   let z = zip x [0..length x]
   in div $ [ div [TodoAdd <$> textinput]
