@@ -3,7 +3,7 @@ module Main
 import Js.Browser
 
 vw : String -> View String
-vw s = div [ mkform $ textForm "stuff"
+vw s = div [ buildForm $ textForm "stuff"
            , text s
            ]
 

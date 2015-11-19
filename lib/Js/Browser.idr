@@ -67,22 +67,23 @@ childVal : Int -> NodeVal a -> NodeVal a
 childVal pos (MkNodeVal f) = MkNodeVal $ \x => childNode pos x >>= f
 
 data HtmlTree : Type where
-  HtmlText : String -> List (String, String) -> HtmlTree
+  HtmlText : String -> List (String, String) -> List (String, Ptr -> JSIO ()) -> HtmlTree
   HtmlElement : String -> List (String, String) -> List (String, Ptr -> JSIO ()) -> (List HtmlTree) -> HtmlTree
   HtmlDynNode : String -> List (String, String) -> List (String, (Ptr -> JSIO ())) ->
                     Ptr -> (Ptr -> HtmlTree) -> (Ptr -> Ptr -> (Ptr, JSIO ()) ) -> HtmlTree
 
 abstract
 data View : Type -> Type  where
-  VText    : String -> List (String, String) -> View a
+  VText    : String -> List (String, String) -> List (String, EventVal a) -> View a
   VNode    : String -> List (String, String) -> List (String, EventVal a) -> List (View a) -> View a
   VDynNode : List (String, String) -> List (String, EventVal c) -> b -> (b -> View a) -> (a -> b -> (b, Maybe c)) -> View c
 
+{-
 public
 noEvents : View a -> View b
-noEvents (VText t attrs) = VText t attrs
+noEvents (VText t attrs ) = VText t attrs
 noEvents (VNode tag attrs _ childs) = VNode tag attrs [] (map noEvents childs)
-
+-}
 
 evtListen_v2h : (a -> JSIO ()) -> (String, EventVal a) -> (String, Ptr -> JSIO ())
 evtListen_v2h onEvent (s, MkEventVal f) = (s, \x => do
@@ -144,12 +145,13 @@ mutual
      addChilds node r
 
   htmltree2js : HtmlTree -> JSIO Ptr
-  htmltree2js (HtmlText s attrs) =
+  htmltree2js (HtmlText s attrs eventListeners) =
     do
       t <- createTextNode s
       node <- createElement "span"
       addAttrs node attrs
       appendChild node t
+      addListeners node eventListeners
       return node
   htmltree2js (HtmlElement tag attrs eventListeners childs ) =
     do
@@ -176,7 +178,7 @@ maplistener : (a -> b) -> List (String, EventVal a) -> List (String, EventVal b)
 maplistener f xs = map (\(n, g) => (n, f <$> g )) xs
 
 hmap : (a -> b) -> View a -> View b
-hmap f (VText s attrs)  = VText s attrs
+hmap f (VText s attrs listeners)  = VText s attrs (maplistener f listeners)
 hmap f x@(VNode tag attrs listeners childs) = assert_total $
   VNode tag
     attrs
@@ -232,7 +234,7 @@ mutual
 
 
   diffUpdateTree : Ptr -> HtmlTree -> HtmlTree -> JSIO ()
-  diffUpdateTree node (HtmlText oldString oldAttrs) newTxt@(HtmlText newString newAttrs) =
+  diffUpdateTree node (HtmlText oldString oldAttrs oldEventListeners) newTxt@(HtmlText newString newAttrs newEventListeners) =
     if oldString == newString then
       pure ()
       else do
@@ -267,6 +269,9 @@ onEvDyn path x =
     updateView path $ vw newSt
     act
 
+sortStrKey : List (String, a) -> List (String, a)
+sortStrKey xs = sortBy (\(x, _), (y, _) => compare x y) xs
+
 mutual
   toHTview : String -> (b -> View a) -> Ptr -> HtmlTree
   toHTview path vw x = view2htmlTree ("0_" ++ path) (onEvDyn path) (vw (believe_me x))
@@ -280,15 +285,16 @@ mutual
     in (believe_me newSt, act)
 
   view2htmlTree : String -> (a -> JSIO ()) -> View a -> HtmlTree
-  view2htmlTree path onEvent (VText s attrs) =
-    HtmlText s attrs
+  view2htmlTree path onEvent (VText s attrs eventListeners) =
+    let evts = map (evtListen_v2h onEvent) eventListeners
+    in HtmlText s (sortStrKey attrs) (sortStrKey evts)
   view2htmlTree path onEvent (VNode tag attrs eventListeners childs) =
     let evts = map (evtListen_v2h onEvent) eventListeners
         chlds = map (\(i, c) => view2htmlTree (show i ++ "_" ++ path) onEvent c) (zip [1..length childs] childs)
-    in HtmlElement tag attrs evts chlds
+    in HtmlElement tag (sortStrKey attrs) (sortStrKey evts) chlds
   view2htmlTree path onEvent (VDynNode attrs eventListeners z vw upd) =
     let evts = map (evtListen_v2h onEvent) eventListeners
-    in HtmlDynNode path attrs evts (believe_me z) (toHTview path vw) (toHTupd path onEvent upd)
+    in HtmlDynNode path (sortStrKey attrs) (sortStrKey evts) (believe_me z) (toHTview path vw) (toHTupd path onEvent upd)
 
 
 public
@@ -317,7 +323,7 @@ dynamicView z vw upd = VDynNode [] [] z vw upd
 
 public
 text : String -> View a
-text x = VText x []
+text x = VText x [] []
 
 public
 div : List (View a) -> View a
@@ -345,42 +351,34 @@ button val lbl =
 
 
 -------- forms ------------------
-{-}
-  VDynNode : List (String, String) -> List (String, EventVal c) -> b -> (b -> View a) -> (a -> b -> (b, Maybe c)) -> View c
+
+TyError : Type
+TyError = List String
 
 abstract
 data Form : Type -> Type where
-  MkForm : a -> View a -> Form a
+  MkForm : (Either TyError a) -> View (Either TyError a) -> Form a
 
 data FormEvent a = FormSetVal a
                  | FormSubmitVal
 
-form_update : FormEvent a -> a -> (a, Maybe a)
+form_update : FormEvent (Either TyError a) -> Either TyError a -> (Either TyError a, Maybe a)
+form_update (FormSubmitVal) z@(Right x) = (z, Just x)
+form_update (FormSubmitVal) z@(Left s) = (z, Nothing)
+form_update (FormSetVal x) y = (x, Nothing)
+
+form_vw : View (Either TyError a) -> Either TyError a -> View (FormEvent (Either TyError a))
+form_vw v (Right a) = div [FormSetVal <$> v, button FormSubmitVal (text "Submit")]
+form_vw v (Left err) = div ([FormSetVal <$> v] ++ map text err ++ [button FormSubmitVal (text "Submit")])
+
 
 public
 buildForm : Form a -> View a
 buildForm (MkForm z vw) =
-  let vw_set_val = FormSetVal <$> vw
-  in VDynNode
-        []
-        []
+  dynamicView
         z
-        (\_ => vw_set_val)
-
-
-  VDynNode [] [] Nothing (\_ => vw) ->
-
--}
-abstract
-data Form : Type -> Type where
-  MkForm : View a -> NodeVal a -> Form a
-
-public
-mkform : Form a -> View a
-mkform (MkForm view val) =
-  div [ noEvents view
-      , VNode "button" [] [("click", nodeVal2EventVal $ parentVal $ childVal 0 $ val)] [text "Submit"]
-      ]
+        (form_vw vw)
+        form_update
 
 
 -------- form primitives --------
@@ -388,8 +386,9 @@ public
 textForm : String -> Form String
 textForm label =
   MkForm
-    (div [ text label, text ": ", VNode "input" [("type","text")] [] [] ])
-    (childVal 2 $ value)
+    (Right "")
+    (div [ text label, text ": ", Right <$> textinput ])
+--    (childVal 2 $ value)
 
 {-
 selectFormAux : String -> List String -> Form (List String)
