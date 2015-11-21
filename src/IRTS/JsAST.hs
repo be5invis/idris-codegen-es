@@ -26,11 +26,12 @@ data JsAST = JsEmpty
            | JsForeign Text [JsAST]
            | JsAFun [Text] JsAST
            | JsB2I JsAST
+           | JsI2B JsAST
             deriving (Show, Eq)
 
 
 indent :: Text -> Text
-indent x = 
+indent x =
   let l  = T.lines x
       il = map (\y -> T.replicate 3 " " `T.append` y) l
   in T.unlines il
@@ -59,7 +60,7 @@ jsAst2Text (JsSwitchCase exp l d) =
            , indent $ default2Text d
            , "}\n"
            ]
-jsAst2Text (JsError t) = 
+jsAst2Text (JsError t) =
   T.concat ["throw new Error(  ", T.pack $ show t, ")"]
 jsAst2Text (JsBinOp op a1 a2) =
   T.concat ["(", jsAst2Text a1," ", op, " ",jsAst2Text a2, ")"]
@@ -69,19 +70,18 @@ jsAst2Text (JsForeign code args) =
   in args_repl code 0 (map jsAst2Text args)
 jsAst2Text (JsAFun l body) = T.concat ["(function(", T.intercalate ", " l, "){", jsAst2Text body, "})"]
 jsAst2Text (JsB2I x) = jsAst2Text $ JsBinOp "+" x (JsInt 0)
+jsAst2Text (JsI2B x) = jsAst2Text $ JsBinOp ">" x (JsInt 0)
 
 
 case2Text :: (JsAST, JsAST) -> Text
-case2Text (x,y) = 
+case2Text (x,y) =
   T.concat [ "case ", jsAst2Text x, ":\n"
            , indent $ T.concat [ jsAst2Text y, ";\nbreak;\n"]
            ]
 
 default2Text :: Maybe JsAST -> Text
 default2Text Nothing = ""
-default2Text (Just z) = 
+default2Text (Just z) =
   T.concat [ "default:\n"
            , indent $ T.concat [ jsAst2Text z, ";\nbreak;\n"]
            ]
-
-

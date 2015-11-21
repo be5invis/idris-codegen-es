@@ -36,6 +36,9 @@ addEventListener node evt action = jscall "%0.addEventListener(%1, %2)" (Ptr -> 
 getElementById : String -> JSIO Ptr
 getElementById x = jscall "document.getElementById(%0)" (String -> JSIO Ptr) x
 
+strequals : Ptr -> Ptr -> JSIO Bool
+strequals x y = jscall "%0+'' == %0+''" (Ptr -> Ptr -> JSIO Bool) x y
+
 data EventVal a = MkEventVal (Ptr -> JSIO a)
 
 data NodeVal a = MkNodeVal (Ptr -> JSIO a)
@@ -230,17 +233,19 @@ mutual
       appendChild node newChild
       diffUpdateChilds node pos [] nr
 
-
+  refreshNode : Ptr -> HtmlTree -> JSIO ()
+  refreshNode node newNode =
+    do
+      new <- htmltree2js newNode
+      p <- parent node
+      replaceChild p new node
 
 
   diffUpdateTree : Ptr -> HtmlTree -> HtmlTree -> JSIO ()
   diffUpdateTree node (HtmlText oldString oldAttrs oldEventListeners) newTxt@(HtmlText newString newAttrs newEventListeners) =
     if oldString == newString then
       pure ()
-      else do
-        new <- htmltree2js newTxt
-        p <- parent node
-        replaceChild p new node
+      else refreshNode node newTxt
   diffUpdateTree node (HtmlElement oldtag oldAttrs oldEventListeners oldChilds) newTree@(HtmlElement newtag newAttrs newEventListeners newChilds) =
     if oldtag == newtag then
       do
@@ -249,6 +254,8 @@ mutual
         new <- htmltree2js newTree
         p <- parent node
         replaceChild p new node
+  diffUpdateTree node _ new =
+    refreshNode node new
 
 updateView : String -> HtmlTree -> JSIO ()
 updateView path newtree =

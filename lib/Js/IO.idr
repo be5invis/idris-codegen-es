@@ -3,6 +3,7 @@ module Js.IO
 mutual
   data JsTypes : Type -> Type where
     JsInt     : JsTypes Int
+    JsBool    : JsTypes Bool
     JsString  : JsTypes String
     JsPtr     : JsTypes Ptr
     JsUnit    : JsTypes ()

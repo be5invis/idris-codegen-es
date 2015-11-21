@@ -3,14 +3,21 @@ import Js.Browser
 start : List String
 start = []
 
-upd : String -> List String -> List String
-upd x y = y ++ [x]
+data TodoAction = TodoAdd String
+                | TodoRemove Nat
 
-vw : List String -> Html String
-vw x = div $ [ div [textinput]
-             , div (map (\x => div [text x]) x)
+upd : TodoAction -> List String -> (List String, Maybe (ASync TodoAction))
+upd (TodoAdd x) y = (y ++ [x], Nothing)
+upd (TodoRemove i) y =  (take i y  ++ drop (i+1) y, Nothing)
+
+vw : List String -> View TodoAction
+vw x =
+  let z = zip x [0..length x]
+  in div $ [ div [TodoAdd <$> textinput]
+             , div (map (\(x,i) => div [button (TodoRemove i) (text "x") , text x]) z)
              ]
-page : App String (List String)
+
+page : App TodoAction (List String)
 page = MkApp
         start
         vw
@@ -19,4 +26,3 @@ page = MkApp
 main : JSIO ()
 main = do
   runApp page
-
