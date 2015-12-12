@@ -152,7 +152,6 @@ eval_name = jsName $ sMN 0 "EVAL"
 
 cgForeignArg :: (FDesc, JsAST) -> JsAST
 cgForeignArg (FCon (UN "JsInt"), v) = v
-cgForeignArg (FCon (UN "JsBool"), v) = JsI2B v
 cgForeignArg (FCon (UN "JsString"), v) = v
 cgForeignArg (FCon (UN "JsPtr"), v) = v
 cgForeignArg (FCon (UN "JsUnit"), v) = v
@@ -168,7 +167,6 @@ evalJSIO x =
 
 cgForeignRes :: (JsAST -> JsAST) -> FDesc -> JsAST -> JsAST
 cgForeignRes ret (FCon (UN "JsInt")) x = ret x
-cgForeignRes ret (FCon (UN "JsBool")) x = ret $ JsB2I x
 cgForeignRes ret (FCon (UN "JsUnit")) x = ret x
 cgForeignRes ret (FCon (UN "JsString")) x = ret x
 cgForeignRes ret (FCon (UN "JsPtr")) x = ret x

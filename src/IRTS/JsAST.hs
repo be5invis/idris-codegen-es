@@ -26,7 +26,6 @@ data JsAST = JsEmpty
            | JsForeign Text [JsAST]
            | JsAFun [Text] JsAST
            | JsB2I JsAST
-           | JsI2B JsAST
             deriving (Show, Eq)
 
 
@@ -67,10 +66,9 @@ jsAst2Text (JsBinOp op a1 a2) =
 jsAst2Text (JsForeign code args) =
   let args_repl c i [] = c
       args_repl c i (t:r) = args_repl (T.replace ("%" `T.append` T.pack (show i)) t c) (i+1) r
-  in args_repl code 0 (map jsAst2Text args)
+  in T.concat ["(", args_repl code 0 (map jsAst2Text args), ")"]
 jsAst2Text (JsAFun l body) = T.concat ["(function(", T.intercalate ", " l, "){", jsAst2Text body, "})"]
 jsAst2Text (JsB2I x) = jsAst2Text $ JsBinOp "+" x (JsInt 0)
-jsAst2Text (JsI2B x) = jsAst2Text $ JsBinOp ">" x (JsInt 0)
 
 
 case2Text :: (JsAST, JsAST) -> Text
