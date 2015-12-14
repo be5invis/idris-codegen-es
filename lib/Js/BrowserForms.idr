@@ -1,6 +1,7 @@
 module Js.BrowserForms
 
 import Js.BrowserBase
+import public Js.BrowserUtils
 
 public
 TyError : Type
@@ -23,7 +24,7 @@ form_update (FormSetVal x) y = (x, Nothing)
 public
 buildForm : Form a -> View Void a
 buildForm (MkForm z vw) =
-  let vw_sub = (FormSetVal <$> vw) .+. button FormSubmitVal (text "Submit")
+  let vw_sub = (FormSetVal <$> vw) .+. button (FormSubmitVal, "Submit")
   in ii $ foldView form_update z (ii vw_sub)
 
 

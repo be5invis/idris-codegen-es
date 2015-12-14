@@ -6,18 +6,20 @@ start = []
 data TodoAction = TodoAdd String
                 | TodoRemove Nat
 
-upd : TodoAction -> List String -> (List String, Maybe (ASync TodoAction))
-upd (TodoAdd x) y = (y ++ [x], Nothing)
-upd (TodoRemove i) y =  (take i y  ++ drop (i+1) y, Nothing)
+upd : TodoAction -> List String -> (List String, ASync TodoAction)
+upd (TodoAdd x) y = (y ++ [x], never)
+upd (TodoRemove i) y =  (take i y  ++ drop (i+1) y, never)
 
-vw_todos : View (List (Int, String)) TodoAction
-vw_todos 
+vw_todos : View (List (Nat, String)) TodoAction
+vw_todos = listView $ div $ dynbtn .$. (\(i, _) => (TodoRemove i,"x")) ..+.. dyntext .$. snd
 
 vw : View (List String) TodoAction
 vw =
-  let z = zip x [0..length x]
-  in div $      (div TodoAdd <$> textinput)
-           .+.. (div (map (\(x,i) => div [button (TodoRemove i) (text "x") , text x]) z))
+  div $ (TodoAdd <$> textinput)
+        .+.. vw_todos .$. z
+  where
+    z: List String -> List (Nat, String)
+    z x = zip [0..length x] x
 
 
 page : App TodoAction (List String)

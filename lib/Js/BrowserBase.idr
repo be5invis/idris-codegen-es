@@ -8,11 +8,19 @@ data Path = Here
           | PathFst Path
           | PathSnd Path
 
+instance Eq Path where
+  Here        == Here        = True
+  (PathFst x) == (PathFst y) = x == y
+  (PathSnd x) == (PathSnd y) = x == y
+  _           == _           = False
 
 Event : Type
 Event = (Path, String)
 
 data EventDef = TargetValue Path
+
+instance Eq EventDef where
+  (TargetValue x) == (TargetValue y) = x == y
 
 tpathE : (Path->Path) -> EventDef -> EventDef
 tpathE f (TargetValue x) = TargetValue $ f x
@@ -68,9 +76,6 @@ idupdEv : a -> s-> (s, Maybe b)
 idupdEv x y = (y, Nothing)
 
 
-staticView : List Html -> View Void b
-staticView x = MkView () (\_=>x) idupdEv (\x,y => y)
-
 renderView : a -> (a->List Html) -> View a b
 renderView x r =
   MkView
@@ -123,6 +128,31 @@ addAttrs node (t::r) =
     setAttribute node t
     addAttrs node r
 
+sortByKey : Ord a => List (a, b) -> List (a, b)
+sortByKey l = sortBy (\(k1,_), (k2,_) => compare k1 k2 ) l
+
+updateAttrs' : Ptr -> List (String, String) -> List (String, String) -> JSIO ()
+updateAttrs' node [] [] =
+  pure ()
+updateAttrs' node ((k, _)::xs) [] =
+  do
+    removeAttribute node k
+    updateAttrs' node xs []
+updateAttrs' node [] (y::ys) =
+  do
+    setAttribute node y
+    updateAttrs' node [] (ys)
+updateAttrs' node (x::xs) (y::ys) =
+  if x == y then updateAttrs' node  xs ys
+    else
+      do
+        setAttribute node y
+        updateAttrs' node (x::xs) ys
+
+
+updateAttrs : Ptr -> List (String, String) -> List (String, String) -> JSIO ()
+updateAttrs node l1 l2 = updateAttrs' node (sortByKey l1) (sortByKey l2)
+
 mutual
 
   addChilds : (Event -> JSIO ()) -> Ptr -> List Html -> JSIO ()
@@ -174,19 +204,14 @@ mutual
   diffUpdateTree procEvt node (HtmlText oldString) newTxt@(HtmlText newString) =
     if oldString == newString then pure ()
       else refreshNode procEvt node newTxt
-{-  diffUpdateTree node (HtmlElement oldtag oldAttrs oldEventListeners oldChilds) newTree@(HtmlElement newtag newAttrs newEventListeners newChilds) =
-    do
-      eq <- strequals oldEventListeners newEventListeners
-      if oldtag == newtag then
-        do
-          diffUpdateChilds node 0 oldChilds newChilds
-        else do
-          new <- htmltree2js newTree
-          p <- parent node
-          replaceChild p new node
--}
-  diffUpdateTree procEvt node _ new =
-    refreshNode procEvt node new
+  diffUpdateTree procEvt node (HtmlElement oldtag oldAttrs oldEventListeners oldChilds)
+                      new@(HtmlElement newtag newAttrs newEventListeners newChilds) =
+     if oldtag == newtag && oldEventListeners == newEventListeners then
+      do
+        updateAttrs node oldAttrs newAttrs
+        diffUpdateChilds procEvt node 0 oldChilds newChilds
+      else refreshNode procEvt node new
+
 
   updateView : (Event -> JSIO ()) -> List Html -> JSIO ()
   updateView procEvt newtree =
@@ -231,21 +256,27 @@ runApp {a} {b} app =
 
 
 -------- view primitives --------
-infixl 4 .$.
 
-(.$.) : (a->b) -> View b c -> View a c
-(.$.) f (MkView z r ue ui) =
+public
+ii : View a b -> View c b
+ii (MkView z r ue ui) = MkView z r ue (\x, y => y)
+
+public
+static : View a b -> a -> View Void b
+static vw x = ii $ stepInput x vw
+
+infixr 4 .$.
+
+public
+(.$.) : View b c -> (a->b) -> View a c
+(.$.) (MkView z r ue ui) f =
   MkView
     z
     r
     ue
     (\x,y => ui (f x) y)
 
-public
-ii : View a b -> View c b
-ii (MkView z r ue ui) = MkView z r ue (\x, y => y)
-
-infixr 7 .+., ..+., .+.., ..+..
+infixr 2 .+., ..+., .+.., ..+..
 
 oupdEvt : Event -> (View a c, View b c) -> ((View a c, View b c), Maybe c)
 oupdEvt (PathFst z, val) (x, y) =
@@ -291,9 +322,6 @@ textinput =
   where
     updEvt (_,s) y = (s,Just s)
 
-public
-text : String -> View Void b
-text x = staticView [HtmlText x]
 
 public
 dyntext : View String b
@@ -301,16 +329,22 @@ dyntext = renderView "" (\x => [HtmlText x])
 
 
 public
-button : a -> View b a -> View b a
-button val lbl =
+dynbtn : View (a, String) a
+dynbtn =
   MkView
-    lbl
-    (\x => [HtmlElement "button" [] [("click", TargetValue $ PathSnd Here)] (tpath PathFst $ render x) ])
+    Nothing
+    render
     updEvt
-    stepInput
+    updInput
   where
-    updEvt (PathFst x,s) y = let (newst, me) = stepEvent (x,s) y in (newst, me)
-    updEvt (PathSnd _, _) y = (y, Just val)
+    render : Maybe (a, String) -> List Html
+    render Nothing = []
+    render (Just (_, lbl)) = [HtmlElement "button" [] [("click", TargetValue Here)] [HtmlText lbl] ]
+    updEvt : Event -> Maybe (a, String) -> ( Maybe (a,String), Maybe a)
+    updEvt _ st@(Just (val, _)) = (st, Just val)
+    updEvt _ Nothing = (Nothing, Nothing)
+    updInput : (a, String) -> Maybe (a, String) -> Maybe (a, String)
+    updInput x y = Just x
 
 public
 foldView : (a -> st -> (st,Maybe res)) -> st -> View st a -> View st res
@@ -344,5 +378,20 @@ span : View a b -> View a b
 span x = groupElement "span" x
 
 
---listView : View a b -> View (List a) b
---listView (MkView z r ue ui)
+public
+listView : View a b -> View (List a) b
+listView {a} {b} v =
+  MkView
+    (the (List (View a b)) [])
+    renderLst
+    updEvt
+    updInput
+  where
+    renderLst [] = []
+    renderLst (x::xs) = tpath PathFst (render x) ++ tpath PathSnd (renderLst xs)
+    updEvt : Event -> List (View a b) -> (List (View a b), Maybe b)
+    updEvt (PathFst m, n) (x::xs) = let (y, res) = stepEvent (m,n) x in (y :: xs, res)
+    updEvt (PathSnd m, n) (x::xs) = let (ys, res) =  updEvt (m, n) xs in (x :: ys, res)
+    updInput [] _ = []
+    updInput (x::xs) (y::ys) = stepInput x y :: updInput xs ys
+    updInput (x::xs) [] = stepInput x v :: updInput xs []

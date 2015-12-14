@@ -29,6 +29,9 @@ createElement s = jscall "document.createElement(%0)" (String -> JSIO Ptr) s
 setAttribute : Ptr -> (String, String) -> JSIO ()
 setAttribute node (k,v) = jscall "%0.setAttribute(%1, %2)" (Ptr -> String -> String -> JSIO ()) node k v
 
+removeAttribute : Ptr -> String -> JSIO ()
+removeAttribute node k = jscall "%0.removeAttribute(%1)" (Ptr -> String -> JSIO ()) node k
+
 addEventListener : Ptr -> String -> (Ptr -> JSIO ()) -> JSIO ()
 addEventListener node evt action = jscall "%0.addEventListener(%1, %2)" (Ptr -> String -> (Ptr -> JSIO ()) -> JSIO ()) node evt action
 
