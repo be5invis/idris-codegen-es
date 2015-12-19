@@ -25,9 +25,17 @@ instance Eq EventDef where
 tpathE : (Path->Path) -> EventDef -> EventDef
 tpathE f (TargetValue x) = TargetValue $ f x
 
+record Attributes where
+  constructor MkAttributes
+  value  : String
+  class_ : String
+
+emptyAttrs : Attributes
+emptyAttrs = MkAttributes "" ""
+
 data Html : Type where
   HtmlText : String ->  Html
-  HtmlElement : String -> List (String, String) -> List (String, EventDef) -> List Html -> Html
+  HtmlElement : String -> Attributes -> List (String, EventDef) -> List Html -> Html
 
 tpath' : (Path->Path) -> Html -> Html
 tpath' f (HtmlText x ) =
@@ -120,38 +128,26 @@ addEventListeners procEvt node ((e,def)::xs) =
     addEventListener node e (eventDef2JS procEvt def)
     addEventListeners procEvt node xs
 
-addAttrs : Ptr -> List (String, String) -> JSIO ()
-addAttrs node [] =
-  pure ()
-addAttrs node (t::r) =
+addAttrs : Ptr -> Attributes -> JSIO ()
+addAttrs node attrs =
   do
-    setAttribute node t
-    addAttrs node r
+    setValue node $ value attrs
+    setClass node $ class_ attrs
 
 sortByKey : Ord a => List (a, b) -> List (a, b)
 sortByKey l = sortBy (\(k1,_), (k2,_) => compare k1 k2 ) l
 
-updateAttrs' : Ptr -> List (String, String) -> List (String, String) -> JSIO ()
-updateAttrs' node [] [] =
-  pure ()
-updateAttrs' node ((k, _)::xs) [] =
+updateAttrs : Ptr -> Attributes -> Attributes -> JSIO ()
+updateAttrs node attrsOld attrsNew =
   do
-    removeAttribute node k
-    updateAttrs' node xs []
-updateAttrs' node [] (y::ys) =
-  do
-    setAttribute node y
-    updateAttrs' node [] (ys)
-updateAttrs' node (x::xs) (y::ys) =
-  if x == y then updateAttrs' node  xs ys
-    else
-      do
-        setAttribute node y
-        updateAttrs' node (x::xs) ys
+    updateAttr value (setValue node) attrsOld attrsNew
+    updateAttr class_ (setClass node) attrsOld attrsNew
+  where
+    updateAttr : Eq a => (Attributes -> a) -> (a->JSIO ()) -> Attributes -> Attributes -> JSIO ()
+    updateAttr proj set attrs1 attrs2 =
+      if proj attrs1 == proj attrs2 then pure ()
+        else set $ proj attrs2
 
-
-updateAttrs : Ptr -> List (String, String) -> List (String, String) -> JSIO ()
-updateAttrs node l1 l2 = updateAttrs' node (sortByKey l1) (sortByKey l2)
 
 mutual
 
@@ -265,16 +261,26 @@ public
 static : View a b -> a -> View Void b
 static vw x = ii $ stepInput x vw
 
-infixr 4 .$.
+infixl 4 .$. , .?.
 
 public
-(.$.) : View b c -> (a->b) -> View a c
-(.$.) (MkView z r ue ui) f =
+(.?.) : View b c -> (a-> Maybe b) -> View a c
+(.?.) (MkView z r ue ui) f =
   MkView
     z
     r
     ue
-    (\x,y => ui (f x) y)
+    updInput
+  where
+    updInput x s =
+      case f x of
+        Just z  => ui z s
+        Nothing => s
+
+public
+(.$.) : View b c -> (a-> b) -> View a c
+(.$.) v f = v .?. (\x => Just $ f x)
+
 
 infixr 2 .+., ..+., .+.., ..+..
 
@@ -316,7 +322,7 @@ textinput : View String String
 textinput =
   MkView
     ""
-    (\x => [HtmlElement "input" [("value",x)] [("change", TargetValue Here)] [] ])
+    (\x => [HtmlElement "input" (record {value = x} emptyAttrs) [("change", TargetValue Here)] [] ])
     updEvt
     (\x, y => x)
   where
@@ -339,12 +345,13 @@ dynbtn =
   where
     render : Maybe (a, String) -> List Html
     render Nothing = []
-    render (Just (_, lbl)) = [HtmlElement "button" [] [("click", TargetValue Here)] [HtmlText lbl] ]
+    render (Just (_, lbl)) = [HtmlElement "button" emptyAttrs [("click", TargetValue Here)] [HtmlText lbl] ]
     updEvt : Event -> Maybe (a, String) -> ( Maybe (a,String), Maybe a)
     updEvt _ st@(Just (val, _)) = (st, Just val)
     updEvt _ Nothing = (Nothing, Nothing)
     updInput : (a, String) -> Maybe (a, String) -> Maybe (a, String)
     updInput x y = Just x
+
 
 public
 foldView : (a -> st -> (st,Maybe res)) -> st -> View st a -> View st res
@@ -365,7 +372,7 @@ groupElement : String -> View a b -> View a b
 groupElement tag (MkView z r ue ui) =
   MkView
     z
-    (\x => [HtmlElement tag [] [] (r x) ])
+    (\x => [HtmlElement tag emptyAttrs [] (r x) ])
     ue
     ui
 

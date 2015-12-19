@@ -15,7 +15,7 @@ vw_todos = listView $ div $ dynbtn .$. (\(i, _) => (TodoRemove i,"x")) ..+.. dyn
 
 vw : View (List String) TodoAction
 vw =
-  div $ (TodoAdd <$> textinput)
+  div $ (TodoAdd <$> (buildForm $ textForm "task"))
         .+.. vw_todos .$. z
   where
     z: List String -> List (Nat, String)

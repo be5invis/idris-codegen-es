@@ -37,3 +37,9 @@ addEventListener node evt action = jscall "%0.addEventListener(%1, %2)" (Ptr -> 
 
 getElementById : String -> JSIO Ptr
 getElementById x = jscall "document.getElementById(%0)" (String -> JSIO Ptr) x
+
+setValue : Ptr -> String -> JSIO ()
+setValue node val = jscall "%0.value = %1" (Ptr->String->JSIO ()) node val
+
+setClass : Ptr -> String -> JSIO ()
+setClass node val = jscall "%0.className = %1" (Ptr->String->JSIO ()) node val
