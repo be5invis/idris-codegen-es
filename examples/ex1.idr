@@ -3,8 +3,8 @@ module Main
 import Js.Browser
 
 vw : View String String
-vw = div $    (buildForm $ textForm "stuff")
-           .+.. dyntext
+vw = div $ ii (buildForm $ textForm)
+           .+. dyntext
 
 
 page : App String String

@@ -43,3 +43,7 @@ setValue node val = jscall "%0.value = %1" (Ptr->String->JSIO ()) node val
 
 setClass : Ptr -> String -> JSIO ()
 setClass node val = jscall "%0.className = %1" (Ptr->String->JSIO ()) node val
+
+setSelected : Ptr -> Bool -> JSIO ()
+setSelected node True = jscall "%0.selected = true" (Ptr->JSIO ()) node
+setSelected node False = jscall "%0.selected = false" (Ptr->JSIO ()) node

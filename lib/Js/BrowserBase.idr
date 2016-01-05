@@ -2,6 +2,7 @@ module Js.BrowserBase
 
 import Js.IO
 import Js.BrowserForeigns
+import Control.Arrow
 
 public
 data Path = Here
@@ -27,11 +28,12 @@ tpathE f (TargetValue x) = TargetValue $ f x
 
 record Attributes where
   constructor MkAttributes
-  value  : String
-  class_ : String
+  value    : String
+  class_   : String
+  selected : Bool
 
 emptyAttrs : Attributes
-emptyAttrs = MkAttributes "" ""
+emptyAttrs = MkAttributes "" "" False
 
 data Html : Type where
   HtmlText : String ->  Html
@@ -133,6 +135,7 @@ addAttrs node attrs =
   do
     setValue node $ value attrs
     setClass node $ class_ attrs
+    setSelected node $ selected attrs
 
 sortByKey : Ord a => List (a, b) -> List (a, b)
 sortByKey l = sortBy (\(k1,_), (k2,_) => compare k1 k2 ) l
@@ -142,6 +145,7 @@ updateAttrs node attrsOld attrsNew =
   do
     updateAttr value (setValue node) attrsOld attrsNew
     updateAttr class_ (setClass node) attrsOld attrsNew
+    updateAttr selected (setSelected node) attrsOld attrsNew
   where
     updateAttr : Eq a => (Attributes -> a) -> (a->JSIO ()) -> Attributes -> Attributes -> JSIO ()
     updateAttr proj set attrs1 attrs2 =
@@ -207,7 +211,7 @@ mutual
         updateAttrs node oldAttrs newAttrs
         diffUpdateChilds procEvt node 0 oldChilds newChilds
       else refreshNode procEvt node new
-
+  diffUpdateTree procEvt node _ new = refreshNode procEvt node new
 
   updateView : (Event -> JSIO ()) -> List Html -> JSIO ()
   updateView procEvt newtree =
@@ -257,11 +261,29 @@ public
 ii : View a b -> View c b
 ii (MkView z r ue ui) = MkView z r ue (\x, y => y)
 
+
+public
+init : View a b -> a -> View a b
+init = flip stepInput
+
 public
 static : View a b -> a -> View Void b
-static vw x = ii $ stepInput x vw
+static vw x = ii $ init vw x
 
-infixl 4 .$. , .?.
+infixl 4 .$. , .?. , <?>
+
+public
+(<?>) : (a->Maybe b) -> View c a -> View c b
+(<?>) f (MkView z r ue ui) =
+  MkView
+    z
+    r
+    updEv
+    ui
+  where
+    updEv x s =
+      let (ns, mv) = ue x s
+      in (ns, mv >>= f)
 
 public
 (.?.) : View b c -> (a-> Maybe b) -> View a c
@@ -282,7 +304,7 @@ public
 (.$.) v f = v .?. (\x => Just $ f x)
 
 
-infixr 2 .+., ..+., .+.., ..+..
+infixr 2 .+.
 
 oupdEvt : Event -> (View a c, View b c) -> ((View a c, View b c), Maybe c)
 oupdEvt (PathFst z, val) (x, y) =
@@ -296,26 +318,23 @@ ovw : (View a c, View b c) -> List Html
 ovw (x, y) = (tpath PathFst $ render x) ++ (tpath PathSnd $ render y)
 
 public
-(..+..): View a c -> View a c -> View a c
-(..+..) x y =
+(.+.): View a c -> View a c -> View a c
+(.+.) x y =
   MkView
   (x,y)
   ovw
   oupdEvt
   (\z,(x,y) => (stepInput z x, stepInput z y))
 
-public
-(.+.) : View a c -> View b c -> View Void c
-(.+.) x y = ii x ..+.. ii y
 
 public
-(..+.) : View a c -> View b c -> View a c
-(..+.) x y = x ..+.. ii y
-
-public
-(.+..) : View a c -> View b c -> View b c
-(.+..) x y = ii x ..+.. y
-
+empty : View a b
+empty =
+  MkView
+    ()
+    (\x => [])
+    (\_, _ => ((), Nothing))
+    (\_, _ => ())
 
 public
 textinput : View String String
@@ -328,6 +347,30 @@ textinput =
   where
     updEvt (_,s) y = (s,Just s)
 
+public
+dynselectinput : View (Maybe Nat, List String) Nat
+dynselectinput =
+  MkView
+    (Nothing, [])
+    render
+    updEvt
+    updInput
+  where
+    isSel : Nat -> Maybe Nat -> Bool
+    isSel _ Nothing = False
+    isSel i (Just j) = i==j
+    render' : Nat -> Maybe Nat -> List String -> List Html
+    render' _ _ [] = []
+    render' pos sel (x::xs) =
+      HtmlElement
+        "option"
+        (record {selected = isSel pos sel, value = show pos} emptyAttrs)
+        []
+        [HtmlText x] :: render' (S pos) sel xs
+    render : (Maybe Nat, List String) -> List Html
+    render (i,l) = [HtmlElement "select" emptyAttrs [("change", TargetValue Here)] $ render' Z i l]
+    updEvt (_,s) (_, l) = let i = fromInteger $ the Integer $ cast s in ((Just i,l), Just i)
+    updInput x z = x
 
 public
 dyntext : View String b
@@ -354,18 +397,18 @@ dynbtn =
 
 
 public
-foldView : (a -> st -> (st,Maybe res)) -> st -> View st a -> View st res
-foldView fold z vw =
+foldView : (i -> st -> (st, Maybe b)) -> (a -> st -> st) -> st -> View st i -> View a b
+foldView onEvt onSet z vw =
   MkView
     (vw, z)
     (render . fst)
     updEvt
-    (\s, (v, _) => (stepInput s v, s))
+    (\u, (v, s) => let news = onSet u s in (stepInput news v, news))
   where
     updEvt e (v, s) =
       case stepEvent e v of
         (newv, Nothing) => ((newv, s), Nothing)
-        (newv, Just val) => let (news, r) = fold val s in ((stepInput news newv, news), r)
+        (newv, Just val) => let (news, res) = onEvt val s in ((stepInput news newv, news), res)
 
 
 groupElement : String -> View a b -> View a b
@@ -384,21 +427,18 @@ public
 span : View a b -> View a b
 span x = groupElement "span" x
 
-
 public
-listView : View a b -> View (List a) b
-listView {a} {b} v =
+dynView : (a->View Void b) -> View a b
+dynView rf =
   MkView
-    (the (List (View a b)) [])
-    renderLst
+    Nothing
+    r
     updEvt
-    updInput
+    updInp
   where
-    renderLst [] = []
-    renderLst (x::xs) = tpath PathFst (render x) ++ tpath PathSnd (renderLst xs)
-    updEvt : Event -> List (View a b) -> (List (View a b), Maybe b)
-    updEvt (PathFst m, n) (x::xs) = let (y, res) = stepEvent (m,n) x in (y :: xs, res)
-    updEvt (PathSnd m, n) (x::xs) = let (ys, res) =  updEvt (m, n) xs in (x :: ys, res)
-    updInput [] _ = []
-    updInput (x::xs) (y::ys) = stepInput x y :: updInput xs ys
-    updInput (x::xs) [] = stepInput x v :: updInput xs []
+    r : Maybe (View Void b) -> List Html
+    r Nothing = []
+    r (Just v) = render v
+    updEvt _ Nothing = (Nothing,Nothing)
+    updEvt x (Just v) = let (ns, mv) = stepEvent x v in (Just ns, mv)
+    updInp x _ = Just $ rf x

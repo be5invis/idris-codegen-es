@@ -207,6 +207,7 @@ cgOp LStrIndex [x, y] = JsArrayProj y x
 cgOp LStrTail [x] = JsMethod x "slice" [JsInt 1]
 cgOp LStrLt [l, r] = JsB2I $ JsBinOp "<" l r
 cgOp (LIntStr _) [x] = JsBinOp "+" x (JsStr "")
+cgOp (LStrInt _) [x] = JsApp "parseInt" [x]
 cgOp (LChInt _) [x] = JsMethod x "charCodeAt" [JsInt 0]
 cgOp (LSExt _ _) [x] = x
 {-
