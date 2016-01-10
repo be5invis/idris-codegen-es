@@ -3,6 +3,7 @@ module Js.BrowserBase
 import Js.IO
 import Js.BrowserForeigns
 import Control.Arrow
+import Data.Vect
 
 public
 data Path = Here
@@ -261,6 +262,9 @@ public
 ii : View a b -> View c b
 ii (MkView z r ue ui) = MkView z r ue (\x, y => y)
 
+public
+io : View a b -> View a c
+io (MkView z r ue ui) = MkView z r (\x,y => (fst $ ue x y ,Nothing)) ui
 
 public
 init : View a b -> a -> View a b
@@ -347,29 +351,46 @@ textinput =
   where
     updEvt (_,s) y = (s,Just s)
 
+
+addindex : Vect k a -> Vect k (Fin k, a)
+addindex {k} x =
+  zip (idx k) x
+  where
+    idx : (k:Nat) -> Vect k (Fin k)
+    idx Z = []
+    idx (S i) = FZ :: (map FS $ idx i)
+
 public
-dynselectinput : View (Maybe Nat, List String) Nat
-dynselectinput =
+selectinput : Vect (S k) String -> View (Fin (S k)) (Fin (S k))
+selectinput opts =
   MkView
-    (Nothing, [])
-    render
+    FZ
+    (render opts)
     updEvt
     updInput
   where
-    isSel : Nat -> Maybe Nat -> Bool
-    isSel _ Nothing = False
-    isSel i (Just j) = i==j
-    render' : Nat -> Maybe Nat -> List String -> List Html
-    render' _ _ [] = []
-    render' pos sel (x::xs) =
+    renderOption : Fin k -> (Fin k, String) -> Html
+    renderOption sel (pos, lbl) =
       HtmlElement
         "option"
-        (record {selected = isSel pos sel, value = show pos} emptyAttrs)
+        (record {selected = pos == sel, value = show $ finToNat pos} emptyAttrs)
         []
-        [HtmlText x] :: render' (S pos) sel xs
-    render : (Maybe Nat, List String) -> List Html
-    render (i,l) = [HtmlElement "select" emptyAttrs [("change", TargetValue Here)] $ render' Z i l]
-    updEvt (_,s) (_, l) = let i = fromInteger $ the Integer $ cast s in ((Just i,l), Just i)
+        [HtmlText lbl]
+    render : Vect k String -> Fin k -> List Html
+    render opts sel =
+      [HtmlElement
+        "select"
+        emptyAttrs
+        [("change", TargetValue Here)]
+        (toList $ map (renderOption sel) (addindex opts))]
+    readSel : (k:Nat) -> String -> Fin (S k)
+    readSel u s =
+      let i = cast s
+      in case integerToFin i (S u) of
+            Nothing => FZ
+            Just x  => x
+    updEvt : Event -> Fin (S k) -> (Fin (S k), Maybe (Fin (S k)))
+    updEvt {k} (_,s) _ = let i = readSel k s in (i, Just i)
     updInput x z = x
 
 public

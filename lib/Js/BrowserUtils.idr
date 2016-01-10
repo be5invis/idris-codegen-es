@@ -4,12 +4,12 @@ import Js.BrowserBase
 
 
 public
-text : String -> View Void b
-text = static dyntext
+t : String -> View a b
+t x = ii $ static dyntext x
 
 public
-button : (a, String) -> View Void a
-button = static dynbtn
+button : (a, String) -> View d a
+button x = ii $ static dynbtn x
 
 public
 listView : View a b -> View (List a) b
@@ -18,7 +18,6 @@ listView v =
   where
     r [] = empty
     r (x::xs) = static v x .+. r xs
-
 
 public
 dynViewMaybe : (a->View Void b) -> View (Maybe a) b
@@ -30,13 +29,13 @@ dynViewMaybe r =
 
 
 public
-chainView : View a b -> View (Either a b) c -> View a c
-chainView x y =
+chainView : View (Either a b) c -> View a b -> View a c
+chainView f x =
   foldView
     updEvt
     updInp
     Nothing
-    (Left <$> x .?. s2a .+. Right <$> y .?. id)
+    (Left <$> x .?. s2a .+. Right <$> f .?. id)
   where
     s2a : Maybe (Either a b) -> Maybe a
     s2a (Just (Left x)) = Just x
@@ -46,3 +45,11 @@ chainView x y =
     updEvt (Right x) _ = (Nothing, Just x)
     updInp : a -> Maybe (Either a b) -> Maybe (Either a b)
     updInp x _ = Just $ Left x
+
+public
+chainViewS : View a c -> View a a -> View a c
+chainViewS f x =
+  chainView (f .$. pinput) x
+  where
+    pinput (Right x) = x
+    pinput (Left x) = x

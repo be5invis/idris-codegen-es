@@ -2,6 +2,7 @@ module Js.BrowserForms
 
 import Js.BrowserBase
 import public Js.BrowserUtils
+import Data.Vect
 
 public
 TyError : Type
@@ -38,7 +39,7 @@ form_update _ (FormSetVal x) _ = ((x, Nothing) , Nothing)
 public
 buildForm : Form a -> View a a
 buildForm (MkForm z vw) =
-  let vw_sub = (FormSetVal <$> vw .?. snd) .+. (ii $ button (FormSubmitVal, "Submit"))
+  let vw_sub = (FormSetVal <$> vw .?. snd) .+. (button (FormSubmitVal, "Submit"))
   in foldView
         (form_update z)
         (\z, _ => (Right z, Just $ UpdateValue z) )
@@ -73,20 +74,22 @@ formMap' : (b->a, a->b) -> Form a -> Form b
 formMap' (f,g) form = formMap (\x => Just $ f x, \x => Right $ g x) form
 
 public
-selectForm : List String -> Form Nat
+selectForm : Vect (S n) String -> Form (Fin (S n))
 selectForm lst =
   MkForm
     (Left ["No value selected"])
-    (Right <$> init (dynselectinput .$. procInput) ResetForm )
+    (procEvents <$> selectinput (" "::lst) .$. procInput )
   where
-    procInput ResetForm = (Nothing, lst)
-    procInput (UpdateValue x) = (Just x,lst)
+    procInput ResetForm = FZ
+    procInput (UpdateValue x) = FS x
+    procEvents FZ = Left ["No value selected"]
+    procEvents (FS x) = Right x
 
 
 public
 combine : Form k -> (a->k) -> (k->Form a) -> Form a
 combine (MkForm kZ selVw) getK kForm =
-  MkForm (kZ >>= getZ) (chainView (selVw .$. (getK<$>) ) (dynView combineAForm))
+  MkForm (kZ >>= getZ) ((dynView combineAForm) `chainView` (selVw .$. (getK<$>) ) )
   where
     getZ : k -> MError a
     getZ x = let (MkForm z _) = kForm x in z
@@ -128,6 +131,11 @@ tupleForm (MkForm xz xvw) (MkForm yz yvw) =
     updInp : FormUpdate (a,b) -> (MError a, MError b, Maybe (FormUpdate (a,b)))
               -> (MError a, MError b, Maybe (FormUpdate (a,b)))
     updInp u (x,y,_) = (x,y, Just u)
+
+
+public
+vtrans : {c : Type} -> ({a:Type} -> {b:Type} -> View a b -> View a b) -> Form c -> Form c
+vtrans f (MkForm x v) = MkForm x $ f v
 
 -------- utils ------------
 public
