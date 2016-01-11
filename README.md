@@ -19,5 +19,6 @@ then open todo.html
 ###Documentation
 The only documentation available right now is the idris generated doc
 ```shell
+cd lib
 idris --mkdoc js.ipkg
 ```
