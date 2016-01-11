@@ -5,7 +5,6 @@ import Js.BrowserForeigns
 import Control.Arrow
 import Data.Vect
 
-public
 data Path = Here
           | PathFst Path
           | PathSnd Path
@@ -258,10 +257,12 @@ runApp {a} {b} app =
 
 -------- view primitives --------
 
+|||Ignores Input, making a view that accepts any input
 public
 ii : View a b -> View c b
 ii (MkView z r ue ui) = MkView z r ue (\x, y => y)
 
+||| Ignores Ouput, making a view that makes no output, hence the outut can have any type needed
 public
 io : View a b -> View a c
 io (MkView z r ue ui) = MkView z r (\x,y => (fst $ ue x y ,Nothing)) ui

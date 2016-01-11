@@ -15,3 +15,9 @@ cd examples
 idris --codegen js -p js todo.idr -o todo.js
 ```
 then open todo.html
+
+###Documentation
+The only documentation available right now is the idris generated doc
+```shell
+idris --mkdoc js.ipkg
+```
