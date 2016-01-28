@@ -16,7 +16,7 @@ MError a = Either TyError a
 data FormUpdate a = UpdateValue a
                   | ResetForm
 
-instance Functor FormUpdate where
+Functor FormUpdate where
   map f ResetForm = ResetForm
   map f (UpdateValue x) = UpdateValue $ f x
 

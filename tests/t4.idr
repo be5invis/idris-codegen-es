@@ -8,8 +8,8 @@ p x = do
 
 call_fn : (Int -> JSIO Int) -> Int -> JSIO Int
 call_fn f x =
-  jscall  
-    "%0(%1)" 
+  jscall
+    "%0(%1)"
     ((Int -> JSIO Int) -> Int -> JSIO Int)
     f x
 
@@ -17,4 +17,4 @@ call_fn f x =
 main : JSIO ()
 main = do
   v <- call_fn p 73
-  putStrLn $ show v
+  putStrLn' $ show v

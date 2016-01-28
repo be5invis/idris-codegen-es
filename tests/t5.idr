@@ -9,4 +9,4 @@ tst =
 
 main : JSIO ()
 main = do
-  putStr $ show tst
+  putStr' $ show tst

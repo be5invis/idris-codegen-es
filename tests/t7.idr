@@ -13,4 +13,4 @@ mutual
 
 main : JSIO ()
 main = do
-  console_log $ show $ is_even 100000
+  console_log $ show $ is_even 10

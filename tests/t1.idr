@@ -1,4 +1,4 @@
 import Js.IO
 
 main : JSIO ()
-main = putStr "ola"
+main = putStr' "ola"

@@ -9,7 +9,7 @@ data Path = Here
           | PathFst Path
           | PathSnd Path
 
-instance Eq Path where
+Eq Path where
   Here        == Here        = True
   (PathFst x) == (PathFst y) = x == y
   (PathSnd x) == (PathSnd y) = x == y
@@ -20,7 +20,7 @@ Event = (Path, String)
 
 data EventDef = TargetValue Path
 
-instance Eq EventDef where
+Eq EventDef where
   (TargetValue x) == (TargetValue y) = x == y
 
 tpathE : (Path->Path) -> EventDef -> EventDef
@@ -65,7 +65,7 @@ viewMap f (MkView z vw updEvent updInput) =
     (\e, s => let (news, res) = updEvent e s in (news, f <$> res) )
     updInput
 
-instance Functor (View c) where
+Functor (View c) where
   map = viewMap
 
 render : View a b -> List Html

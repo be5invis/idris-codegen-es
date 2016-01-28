@@ -46,10 +46,10 @@ public
 never : ASync a
 never = MkASync (\onevt => pure ())
 
-instance Functor ASync where
+Functor ASync where
   map f (MkASync oldset) = MkASync (\onevt => oldset (\x => onevt (f x)) )
 
-instance Applicative ASync where
+Applicative ASync where
   pure x = fireAfter 0 x
   (MkASync stepf) <*> (MkASync stepx) =
     MkASync (\onevt => stepf (\f => stepx (\x => onevt (f x)) ))
