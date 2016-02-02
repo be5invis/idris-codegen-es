@@ -7,7 +7,7 @@ data TstExp = Pos Nat
             | Neg Nat
             | Plus TstExp TstExp
 
-instance Show TstExp where
+Show TstExp where
   show (Pos x) = show x
   show (Neg x) = "(-" ++ show x ++ ")"
   show (Plus x y) = "(" ++ show x ++ " + " ++ show y ++ ")"

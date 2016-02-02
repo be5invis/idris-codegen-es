@@ -271,10 +271,6 @@ public
 init : View a b -> a -> View a b
 init = flip stepInput
 
-public
-static : View a b -> a -> View Void b
-static vw x = ii $ init vw x
-
 infixl 4 .$. , .?. , <?>
 
 public
@@ -422,7 +418,7 @@ public
 foldView : (i -> st -> (st, Maybe b)) -> (a -> st -> st) -> st -> View st i -> View a b
 foldView onEvt onSet z vw =
   MkView
-    (vw, z)
+    (init vw z, z)
     (render . fst)
     updEvt
     (\u, (v, s) => let news = onSet u s in (stepInput news v, news))
@@ -464,3 +460,14 @@ dynView rf =
     updEvt _ Nothing = (Nothing,Nothing)
     updEvt x (Just v) = let (ns, mv) = stepEvent x v in (Just ns, mv)
     updInp x _ = Just $ rf x
+
+attrChangeHtml : (Attributes -> Attributes) -> Html -> Html
+attrChangeHtml f (HtmlElement x attrs y z) = HtmlElement x (f attrs) y z
+attrChangeHtml f (HtmlText t) = HtmlElement "span" (f emptyAttrs) [] [HtmlText t]
+
+attrChange : (Attributes -> Attributes) -> View a b -> View a b
+attrChange f (MkView x r y z) = MkView x ((map $ attrChangeHtml f) . r) y z
+
+public
+cssClass : String -> View a b -> View a b
+cssClass classNew = attrChange (record {class_ = classNew})

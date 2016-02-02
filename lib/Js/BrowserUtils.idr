@@ -1,7 +1,12 @@
 module Js.BrowserUtils
 
 import Js.BrowserBase
+import Js.IO
 
+
+public
+static : View a b -> a -> View Void b
+static vw x = ii $ init vw x
 
 public
 t : String -> View a b
@@ -18,6 +23,12 @@ listView v =
   where
     r [] = empty
     r (x::xs) = static v x .+. r xs
+
+public
+merge : List (View a b) -> View a b
+merge (x::xs) = x .+. merge xs
+merge []      = empty
+
 
 public
 dynViewMaybe : (a->View Void b) -> View (Maybe a) b
@@ -53,3 +64,11 @@ chainViewS f x =
   where
     pinput (Right x) = x
     pinput (Left x) = x
+
+public
+viewApp : View a b -> App () ()
+viewApp vw =
+  MkApp
+    ()
+    (ii $ io vw)
+    (\x, y => ((), never))
