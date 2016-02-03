@@ -39,7 +39,7 @@ form_update _ (FormSetVal x) _ = ((x, Nothing) , Nothing)
 public
 buildForm : Form a -> View a a
 buildForm (MkForm z vw) =
-  let vw_sub = (FormSetVal <$> vw .?. snd) .+. (button (FormSubmitVal, "Submit"))
+  let vw_sub = (FormSetVal <$> vw .?. snd) .+. (button FormSubmitVal "Submit")
   in foldView
         (form_update z)
         (\z, _ => (Right z, Just $ UpdateValue z) )

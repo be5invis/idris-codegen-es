@@ -29,11 +29,11 @@ tpathE f (TargetValue x) = TargetValue $ f x
 record Attributes where
   constructor MkAttributes
   value    : String
-  class_   : String
+  class_   : List String
   selected : Bool
 
 emptyAttrs : Attributes
-emptyAttrs = MkAttributes "" "" False
+emptyAttrs = MkAttributes "" [] False
 
 data Html : Type where
   HtmlText : String ->  Html
@@ -82,19 +82,6 @@ stepInput x (MkView z vw upd1 upd2) =
   in MkView newz vw upd1 upd2
 
 
-idupdEv : a -> s-> (s, Maybe b)
-idupdEv x y = (y, Nothing)
-
-
-renderView : a -> (a->List Html) -> View a b
-renderView x r =
-  MkView
-    x
-    r
-    idupdEv
-    (\x,y => x)
-
-
 public
 record App a b where
   constructor MkApp
@@ -130,11 +117,14 @@ addEventListeners procEvt node ((e,def)::xs) =
     addEventListener node e (eventDef2JS procEvt def)
     addEventListeners procEvt node xs
 
+classesString : Attributes -> String
+classesString x = concat $ intersperse " " $ class_ x
+
 addAttrs : Ptr -> Attributes -> JSIO ()
 addAttrs node attrs =
   do
     setValue node $ value attrs
-    setClass node $ class_ attrs
+    setClass node $ classesString attrs
     setSelected node $ selected attrs
 
 sortByKey : Ord a => List (a, b) -> List (a, b)
@@ -144,7 +134,7 @@ updateAttrs : Ptr -> Attributes -> Attributes -> JSIO ()
 updateAttrs node attrsOld attrsNew =
   do
     updateAttr value (setValue node) attrsOld attrsNew
-    updateAttr class_ (setClass node) attrsOld attrsNew
+    updateAttr classesString (setClass node) attrsOld attrsNew
     updateAttr selected (setSelected node) attrsOld attrsNew
   where
     updateAttr : Eq a => (Attributes -> a) -> (a->JSIO ()) -> Attributes -> Attributes -> JSIO ()
@@ -391,27 +381,25 @@ selectinput opts =
     updInput x z = x
 
 public
-dyntext : View String b
-dyntext = renderView "" (\x => [HtmlText x])
-
+t : String -> View a b
+t x =
+  MkView
+    ()
+    (\_ => [HtmlText x])
+    (\_, _ => ((), Nothing))
+    (\_,_ => ())
 
 public
-dynbtn : View (a, String) a
-dynbtn =
+button : b -> String -> View a b
+button val lbl =
   MkView
-    Nothing
+    ()
     render
     updEvt
-    updInput
+    (\_, _ => ())
   where
-    render : Maybe (a, String) -> List Html
-    render Nothing = []
-    render (Just (_, lbl)) = [HtmlElement "button" emptyAttrs [("click", TargetValue Here)] [HtmlText lbl] ]
-    updEvt : Event -> Maybe (a, String) -> ( Maybe (a,String), Maybe a)
-    updEvt _ st@(Just (val, _)) = (st, Just val)
-    updEvt _ Nothing = (Nothing, Nothing)
-    updInput : (a, String) -> Maybe (a, String) -> Maybe (a, String)
-    updInput x y = Just x
+    render () = [HtmlElement "button" emptyAttrs [("click", TargetValue Here)] [HtmlText lbl] ]
+    updEvt _ _ = ((), Just val)
 
 
 public
@@ -469,5 +457,5 @@ attrChange : (Attributes -> Attributes) -> View a b -> View a b
 attrChange f (MkView x r y z) = MkView x ((map $ attrChangeHtml f) . r) y z
 
 public
-cssClass : String -> View a b -> View a b
-cssClass classNew = attrChange (record {class_ = classNew})
+addClass : String -> View a b -> View a b
+addClass classNew = attrChange (\x => record {class_ = classNew :: class_ x } x)

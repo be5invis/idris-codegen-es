@@ -3,18 +3,17 @@ module Js.BrowserUtils
 import Js.BrowserBase
 import Js.IO
 
-
 public
 static : View a b -> a -> View Void b
 static vw x = ii $ init vw x
 
 public
-t : String -> View a b
-t x = ii $ static dyntext x
+dynbtn : View (a, String) a
+dynbtn = dynView (\(x,y) => button x y )
 
 public
-button : (a, String) -> View d a
-button x = ii $ static dynbtn x
+dyntext : View String a
+dyntext = dynView t
 
 public
 listView : View a b -> View (List a) b
