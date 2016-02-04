@@ -8,3 +8,4 @@ modules = Js.IO
         , Js.BrowserBase
         , Js.BrowserForms
         , Js.BrowserUtils
+        , Js.Purecss

@@ -14,15 +14,15 @@ Show TstExp where
 
 data TstExpForms = NumberForm | PlusForm
 
-identV : Nat -> View a b -> View a b
-identV i x = div $ t (pack $ the (List Char) $ replicate i '-') .+. x
+indentV : Nat -> View a b -> View a b
+indentV i x = div $ t (pack $ the (List Char) $ replicate i '-') .+. x
 
-identF : Nat -> Form a -> Form a
-identF i = vtrans (identV i)
+indentF : Nat -> Form a -> Form a
+indentF i = vtrans (indentV i)
 
 tstForm : Nat -> Lazy (Form TstExp)
 tstForm i =
-  identF i $ combine
+  indentF i $ combine
     (selectForm ["Pos", "Neg", "Plus"])
     theNat
     theForm

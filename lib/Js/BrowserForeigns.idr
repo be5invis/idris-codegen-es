@@ -8,8 +8,11 @@ removeChild node pos = jscall "%0.removeChild(%0.childNodes[%1] )" (Ptr -> Int -
 childNode : Int -> Ptr -> JSIO Ptr
 childNode pos node = jscall "%0.childNodes[%1]" (Ptr -> Int -> JSIO Ptr) node pos
 
-createTextNode : String -> JSIO Ptr
-createTextNode s = jscall "document.createTextNode(%0)" (String -> JSIO Ptr) s
+
+setTextContent : Ptr -> String -> JSIO ()
+setTextContent node s = jscall "%0.textContent = %1" (Ptr -> String -> JSIO ()) node s
+--createTextNode : String -> JSIO Ptr
+--createTextNode s = jscall "document.createTextNode(%0)" (String -> JSIO Ptr) s
 
 appendChild : Ptr -> Ptr -> JSIO ()
 appendChild node child = jscall "%0.appendChild(%1)" (Ptr -> Ptr -> JSIO ()) node child

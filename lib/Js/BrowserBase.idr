@@ -36,18 +36,24 @@ emptyAttrs : Attributes
 emptyAttrs = MkAttributes "" [] False
 
 data Html : Type where
-  HtmlText : String ->  Html
-  HtmlElement : String -> Attributes -> List (String, EventDef) -> List Html -> Html
+  HtmlElement : String -> Attributes -> List (String, EventDef) -> Either String (List Html) -> Html
+
+htmlElement : String -> List (String, EventDef) -> List Html -> Html
+htmlElement x y z = HtmlElement x emptyAttrs y $ Right z
+
+htmlText : String -> Html
+htmlText x = HtmlElement "span" emptyAttrs [] $ Left x
 
 tpath' : (Path->Path) -> Html -> Html
-tpath' f (HtmlText x ) =
-  HtmlText x
 tpath' f (HtmlElement tag attrs events childs) =
   HtmlElement
     tag
     attrs
     (map (\(s, x) => (s, tpathE f x)) events)
-    (map (tpath' f) childs)
+    (tpChilds childs)
+  where
+    tpChilds (Left x) = Left x
+    tpChilds (Right x) = Right $ map (tpath' f) x
 
 tpath : (Path->Path) -> List Html -> List Html
 tpath f =  map (tpath' f)
@@ -155,14 +161,17 @@ mutual
      addChilds procEvt node r
 
   htmltree2js : (Event -> JSIO ()) -> Html -> JSIO Ptr
-  htmltree2js procEvt (HtmlText s) = createTextNode s
   htmltree2js procEvt (HtmlElement tag attrs events childs) =
     do
       node <- createElement tag
-      addChilds procEvt node childs
+      addChildsAux node childs
       addAttrs node attrs
       addEventListeners procEvt node events
       return node
+    where
+      addChildsAux : Ptr -> Either String (List Html) -> JSIO ()
+      addChildsAux node (Left x) = setTextContent node x
+      addChildsAux  node (Right c) = addChilds procEvt node c
 
 mutual
   diffUpdateChilds : (Event -> JSIO ()) -> Ptr -> Int -> List Html -> List Html -> JSIO ()
@@ -170,7 +179,7 @@ mutual
   diffUpdateChilds procEvt node pos (ot::or) [] =
     do
       removeChild node pos
-      diffUpdateChilds procEvt node (pos + 1) or []
+      diffUpdateChilds procEvt node (pos) or []
   diffUpdateChilds procEvt node pos (ot::or) (nt::nr) =
     do
       c <- childNode pos node
@@ -191,17 +200,23 @@ mutual
 
 
   diffUpdateTree : (Event -> JSIO ()) -> Ptr -> Html -> Html -> JSIO ()
-  diffUpdateTree procEvt node (HtmlText oldString) newTxt@(HtmlText newString) =
-    if oldString == newString then pure ()
-      else refreshNode procEvt node newTxt
   diffUpdateTree procEvt node (HtmlElement oldtag oldAttrs oldEventListeners oldChilds)
                       new@(HtmlElement newtag newAttrs newEventListeners newChilds) =
      if oldtag == newtag && oldEventListeners == newEventListeners then
       do
         updateAttrs node oldAttrs newAttrs
-        diffUpdateChilds procEvt node 0 oldChilds newChilds
+        diffUpdateChildsAux oldChilds newChilds
       else refreshNode procEvt node new
-  diffUpdateTree procEvt node _ new = refreshNode procEvt node new
+     where
+      diffUpdateChildsAux : Either String (List Html) -> Either String (List Html) -> JSIO ()
+      diffUpdateChildsAux (Left x) (Left y) =
+        if x == y then pure () else setTextContent node y
+      diffUpdateChildsAux _ (Left x) =
+        setTextContent node x
+      diffUpdateChildsAux (Right x) (Right y) =
+        diffUpdateChilds procEvt node 0 x y
+      diffUpdateChildsAux (Left _) (Right x)=
+        addChilds procEvt node x
 
   updateView : (Event -> JSIO ()) -> List Html -> JSIO ()
   updateView procEvt newtree =
@@ -244,6 +259,11 @@ runApp {a} {b} app =
     updateView (makeProcEvt a b) h
 
 
+attrChangeHtml : (Attributes -> Attributes) -> Html -> Html
+attrChangeHtml f (HtmlElement x attrs y z) = HtmlElement x (f attrs) y z
+
+attrChange : (Attributes -> Attributes) -> View a b -> View a b
+attrChange f (MkView x r y z) = MkView x ((map $ attrChangeHtml f) . r) y z
 
 -------- view primitives --------
 
@@ -332,7 +352,7 @@ textinput : View String String
 textinput =
   MkView
     ""
-    (\x => [HtmlElement "input" (record {value = x} emptyAttrs) [("change", TargetValue Here)] [] ])
+    (\x => [ attrChangeHtml (record {value = x}) $ htmlElement "input"  [("change", TargetValue Here)] [] ])
     updEvt
     (\x, y => x)
   where
@@ -358,16 +378,14 @@ selectinput opts =
   where
     renderOption : Fin k -> (Fin k, String) -> Html
     renderOption sel (pos, lbl) =
-      HtmlElement
+      attrChangeHtml (record {selected = pos == sel, value = show $ finToNat pos}) $ htmlElement
         "option"
-        (record {selected = pos == sel, value = show $ finToNat pos} emptyAttrs)
         []
-        [HtmlText lbl]
+        [htmlText lbl]
     render : Vect k String -> Fin k -> List Html
     render opts sel =
-      [HtmlElement
+      [htmlElement
         "select"
-        emptyAttrs
         [("change", TargetValue Here)]
         (toList $ map (renderOption sel) (addindex opts))]
     readSel : (k:Nat) -> String -> Fin (S k)
@@ -385,7 +403,7 @@ t : String -> View a b
 t x =
   MkView
     ()
-    (\_ => [HtmlText x])
+    (\_ => [htmlText x])
     (\_, _ => ((), Nothing))
     (\_,_ => ())
 
@@ -398,7 +416,7 @@ button val lbl =
     updEvt
     (\_, _ => ())
   where
-    render () = [HtmlElement "button" emptyAttrs [("click", TargetValue Here)] [HtmlText lbl] ]
+    render () = [htmlElement "button" [("click", TargetValue Here)] [htmlText lbl] ]
     updEvt _ _ = ((), Just val)
 
 
@@ -421,7 +439,7 @@ groupElement : String -> View a b -> View a b
 groupElement tag (MkView z r ue ui) =
   MkView
     z
-    (\x => [HtmlElement tag emptyAttrs [] (r x) ])
+    (\x => [htmlElement tag [] (r x) ])
     ue
     ui
 
@@ -448,13 +466,6 @@ dynView rf =
     updEvt _ Nothing = (Nothing,Nothing)
     updEvt x (Just v) = let (ns, mv) = stepEvent x v in (Just ns, mv)
     updInp x _ = Just $ rf x
-
-attrChangeHtml : (Attributes -> Attributes) -> Html -> Html
-attrChangeHtml f (HtmlElement x attrs y z) = HtmlElement x (f attrs) y z
-attrChangeHtml f (HtmlText t) = HtmlElement "span" (f emptyAttrs) [] [HtmlText t]
-
-attrChange : (Attributes -> Attributes) -> View a b -> View a b
-attrChange f (MkView x r y z) = MkView x ((map $ attrChangeHtml f) . r) y z
 
 public
 addClass : String -> View a b -> View a b
