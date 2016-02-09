@@ -226,24 +226,43 @@ mutual
       diffUpdateChilds procEvt node 0 lastTree newtree
       setLastTree newtree
 
-makeProcEvt : Type -> Type -> Event -> JSIO ()
-makeProcEvt t1 t2 evt =
-  do
-    app <- the (App t1 t2) <$> getApp
-    let (MkView z r u1 u2) = view app
-    let (afterEvtView, maybeVal) = stepEvent evt $ view app
-    case maybeVal of
-        Nothing  => refreshApp $ record {view = afterEvtView} app
-        Just val => do
-          let (newState, act) = update app val $ state app
-          let newView = stepInput newState afterEvtView
-          refreshApp $ record {state = newState, view = newView} app
-  where
-    refreshApp : App t1 t2 -> JSIO ()
-    refreshApp x =
-      do
-        setApp x
-        updateView (makeProcEvt t1 t2) (render $ view x)
+mutual
+
+  makeProcASync : Type -> a -> JSIO ()
+  makeProcASync {a} tSt val =
+    do
+      app <- the (App a tSt) <$> getApp
+      updValApp val app
+
+
+  makeProcEvt : Type -> Type -> Event -> JSIO ()
+  makeProcEvt t1 t2 evt =
+    do
+      app <- the (App t1 t2) <$> getApp
+      let (afterEvtView, maybeVal) = stepEvent evt $ view app
+      case maybeVal of
+          Nothing  => refreshApp $ record {view = afterEvtView} app
+          Just val => do
+            updValApp val (record {view = afterEvtView} app)
+          --  let (newState, act) = update app val $ state app
+          --  let newView = stepInput newState afterEvtView
+          --  setASync (makeProcASync t2) act
+          --  refreshApp $ record {state = newState, view = newView} app
+
+  refreshApp : App t1 t2 -> JSIO ()
+  refreshApp {t1} {t2} x =
+    do
+      setApp x
+      updateView (makeProcEvt t1 t2) (render $ view x)
+
+  updValApp : a -> App a b -> JSIO ()
+  updValApp {a} {b} val app =
+    do
+      let (newState, act) = update app val $ state app
+      let newView = stepInput newState (view app)
+      setASync (makeProcASync b) act
+      refreshApp $ record {state = newState, view = newView} app
+
 
 public
 runApp : App a b -> JSIO ()
@@ -253,8 +272,10 @@ runApp {a} {b} app =
     root <- createElement "div"
     setAttribute root ("id","root")
     appendChild bo root
-    setApp app
-    let h = render $ view app
+    let newView = stepInput (state app) (view app)
+    let newApp = record {view = newView} app
+    setApp newApp
+    let h = render $ view newApp
     setLastTree []
     updateView (makeProcEvt a b) h
 

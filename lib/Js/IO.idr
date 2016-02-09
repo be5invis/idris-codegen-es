@@ -28,7 +28,7 @@ public
 jsdebug : a -> JSIO ()
 jsdebug x = jscall "console.log(%0)" (Ptr -> JSIO ()) (believe_me x)
 
-abstract
+public
 data ASync : Type -> Type where
   MkASync : ((a -> JSIO()) -> JSIO ()) -> ASync a
 

@@ -50,3 +50,30 @@ setClass node val = jscall "%0.className = %1" (Ptr->String->JSIO ()) node val
 setSelected : Ptr -> Bool -> JSIO ()
 setSelected node True = jscall "%0.selected = true" (Ptr->JSIO ()) node
 setSelected node False = jscall "%0.selected = false" (Ptr->JSIO ()) node
+
+
+
+------ Network -------
+
+httpGet_raw : String -> (String -> JSIO ()) -> JSIO ()
+httpGet_raw url callback =
+  jscall
+    ("function(){var xmlhttp=new XMLHttpRequest();console.log(%0);"++
+    "xmlhttp.onreadystatechange=function(){if(xmlhttp.readyState==4){if(xmlhttp.status==200){console.log(xmlhttp.responseText);%1(xmlhttp.responseText)}} };"++
+    "xmlhttp.open('GET',%0, true);"++
+    "xmlhttp.send(null);}()")
+    (String -> (String -> JSIO ()) -> JSIO ())
+    url
+    callback
+
+httpPost_raw : String -> String -> (String -> JSIO ()) -> JSIO ()
+httpPost_raw url body callback =
+  jscall
+    ("function(){var xmlhttp=new XMLHttpRequest();"++
+    "xmlhttp.onreadystatechange=function(){if(xmlhttp.readyState==4){if(xmlhttp.status==200){%2(xmlhttp.responseText)}} };"++
+    "xmlhttp.open('POST',%0, true);"++
+    "xmlhttp.send(%1);}()")
+    (String -> String -> (String -> JSIO ()) -> JSIO ())
+    url
+    body
+    callback

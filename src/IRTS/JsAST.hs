@@ -18,6 +18,7 @@ data JsAST = JsEmpty
            | JsArrayProj JsAST JsAST
            | JsInt Int
            | JsInteger Integer
+           | JsDouble Double
            | JsStr Text
            | JsArray [JsAST]
            | JsSwitchCase JsAST [(JsAST, JsAST)] (Maybe JsAST)
@@ -50,6 +51,7 @@ jsAst2Text (JsSeq x y) = T.concat [jsAst2Text x, ";\n", jsAst2Text y]
 jsAst2Text (JsDecVar name exp) = T.concat [ "var ", name, " = ", jsAst2Text exp]
 jsAst2Text (JsArrayProj i exp) = T.concat [ jsAst2Text exp, "[", jsAst2Text i, "]"]
 jsAst2Text (JsInt i) = T.pack $ show i
+jsAst2Text (JsDouble d) = T.pack $ show d
 jsAst2Text (JsInteger i) = T.pack $ show i
 jsAst2Text (JsStr s) = T.pack $ show s
 jsAst2Text (JsArray l) = T.concat [ "[", T.intercalate ", " (map jsAst2Text l), "]"]
