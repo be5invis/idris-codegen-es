@@ -128,7 +128,7 @@ cgBody ret (SChkCase e alts) =
         conCase _ = False
 cgBody ret (SConst c) = ret $ cgConst c
 cgBody ret (SOp op args) = ret $ cgOp op (map cgVar args)
-cgBody ret SNothing = ret $ JsInt 0
+cgBody ret SNothing = ret $ JsNull
 cgBody ret (SError x) = JsError $ T.pack $ x
 cgBody ret x@(SForeign dres (FStr code) args ) =
   cgForeignRes ret dres $ JsForeign (T.pack code) (map cgForeignArg (map (\(x,y) -> (x, cgVar y)) args))
@@ -163,7 +163,7 @@ cgForeignArg (desc, _) = error $ "Foreign arg type " ++ show desc ++ " not suppo
 
 evalJSIO :: JsAST -> JsAST
 evalJSIO x =
-  JsApp eval_name [JsApp apply_name [x, JsInt 0]]
+  JsAppIfDef eval_name (JsApp apply_name [x, JsInt 0])
 
 cgForeignRes :: (JsAST -> JsAST) -> FDesc -> JsAST -> JsAST
 cgForeignRes ret (FCon (UN "JsInt")) x = ret x
@@ -179,7 +179,7 @@ cgVar (Glob n) = JsVar $ jsName n
 cgConst :: Const -> JsAST
 cgConst (I i) = JsInt i
 cgConst (BI i) = JsInteger i
-cgConst (Ch c) = JsStr $ T.pack $ [c]
+cgConst (Ch c) = JsInt $ ord c--JsStr $ T.pack $ [c]
 cgConst (Str s) = JsStr $ T.pack s
 cgConst (Fl f) = JsDouble f
 cgConst (B8 x) = error "error B8"
@@ -193,7 +193,7 @@ cgOp :: PrimFn -> [JsAST] -> JsAST
 cgOp (LPlus (ATInt _)) [l, r] =
   JsBinOp "+" l r
 cgOp (LMinus (ATInt _)) [l, r] = JsBinOp "-" l r
-cgOp (LTimes (ATInt _)) [l, r] = JsBinOp "*" l r
+cgOp (LTimes _) [l, r] = JsBinOp "*" l r
 cgOp (LEq (ATInt _)) [l, r] = JsB2I $ JsBinOp "==" l r
 cgOp (LSLt (ATInt _)) [l, r] = JsB2I $ JsBinOp "<" l r
 cgOp (LSLe (ATInt _)) [l, r] = JsB2I $ JsBinOp "<=" l r
@@ -201,17 +201,21 @@ cgOp (LSGt (ATInt _)) [l, r] = JsB2I $ JsBinOp ">" l r
 cgOp (LSGe (ATInt _)) [l, r] = JsB2I $ JsBinOp ">=" l r
 cgOp LStrEq [l,r] = JsB2I $ JsBinOp "==" l r
 --cgOp LStrRev [x] = "strrev(" ++ x ++ ")"
-cgOp LStrLen [x] = JsForeign "$0.length" [x]
-cgOp LStrHead [x] = JsArrayProj (JsInt 0) x
-cgOp LStrIndex [x, y] = JsArrayProj y x
+cgOp LStrLen [x] = JsForeign "%0.length" [x]
+cgOp LStrHead [x] = JsMethod x "charCodeAt" [JsInt 0] -- JsArrayProj (JsInt 0) x
+cgOp LStrIndex [x, y] = JsMethod x "charCodeAt" [y] -- JsArrayProj y x
 cgOp LStrTail [x] = JsMethod x "slice" [JsInt 1]
 cgOp LStrLt [l, r] = JsB2I $ JsBinOp "<" l r
 cgOp (LFloatStr) [x] = JsBinOp "+" x (JsStr "")
 cgOp (LIntStr _) [x] = JsBinOp "+" x (JsStr "")
 cgOp (LStrInt _) [x] = JsApp "parseInt" [x]
 cgOp (LStrFloat) [x] = JsApp "parseFloat" [x]
-cgOp (LChInt _) [x] = JsMethod x "charCodeAt" [JsInt 0]
+cgOp (LChInt _) [x] = x --JsMethod x "charCodeAt" [JsInt 0]
+cgOp (LIntCh _) [x] = x --JsApp "String.fromCharCode" [x]
 cgOp (LSExt _ _) [x] = x
+cgOp (LZExt _ _) [x] = x
+cgOp (LIntFloat _) [x] = x
+cgOp (LSDiv _) [x,y] = JsBinOp "/" x y
 {-
 cgOp (LIntCh _) [x] = x
 cgOp (LTrunc _ _) [x] = x
@@ -219,5 +223,5 @@ cgOp (LTrunc _ _) [x] = x
 cgOp LWriteStr [_,str] = JsApp "console.log" [str]
 --cgOp LReadStr [_] = "idris_readStr()"
 cgOp LStrConcat [l,r] = JsBinOp "+" l r
-cgOp LStrCons [l,r] = JsBinOp "+" l r
+cgOp LStrCons [l,r] = JsForeign "String.fromCharCode(%0) + %1" [l,r] --JsBinOp "+" l r
 cgOp op exps = error ("Operator " ++ show (op, exps) ++ " not implemented")

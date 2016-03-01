@@ -2,7 +2,7 @@ import Js.IO
 
 p : Int -> JSIO Int
 p x = do
-  putStr "ola"
+  putStr' "ola"
   pure $ x + 1
 
 

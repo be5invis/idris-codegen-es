@@ -40,11 +40,15 @@ public
 fireAfter : Int -> a -> ASync a
 fireAfter millis x =
   MkASync $ \onevt =>
-    jscall  "setTimout(%0, %1)" ((() -> JSIO ()) -> Int -> JSIO ()) (\() => onevt x) millis
+    jscall  "setTimeout(%0, %1)" ((() -> JSIO ()) -> Int -> JSIO ()) (\() => onevt x) millis
 
 public
 never : ASync a
 never = MkASync (\onevt => pure ())
+
+public
+liftJSIO : JSIO a -> ASync a
+liftJSIO x = MkASync (\onevt => x >>= onevt)
 
 Functor ASync where
   map f (MkASync oldset) = MkASync (\onevt => oldset (\x => onevt (f x)) )
@@ -53,3 +57,7 @@ Applicative ASync where
   pure x = fireAfter 0 x
   (MkASync stepf) <*> (MkASync stepx) =
     MkASync (\onevt => stepf (\f => stepx (\x => onevt (f x)) ))
+
+Monad ASync where
+  (>>=) (MkASync stepx) f =
+    MkASync $ \onevt => stepx (\x => let MkASync stepf = f x in stepf onevt )

@@ -6,16 +6,16 @@ import public Lightyear.Strings
 
 import public Data.SortedMap
 
-%access public
 
+public
 data JsonValue = JsonString String
-               | JsonNumber Float
+               | JsonNumber Double
                | JsonBool Bool
                | JsonNull
                | JsonArray (List JsonValue)
                | JsonObject (SortedMap String JsonValue)
 
-instance Show JsonValue where
+Show JsonValue where
   show (JsonString s)   = show s
   show (JsonNumber x)   = show x
   show (JsonBool True ) = "true"
@@ -76,7 +76,7 @@ record Scientific where
   coefficient : Integer
   exponent : Integer
 
-scientificToFloat : Scientific -> Float
+scientificToFloat : Scientific -> Double
 scientificToFloat (MkScientific c e) = fromInteger c * exp
   where exp = if e < 0 then 1 / pow 10 (fromIntegerNat (- e))
                        else pow 10 (fromIntegerNat e)
@@ -93,7 +93,7 @@ parseScientific = do sign <- maybe 1 (const (-1)) `map` opt (char '-')
   where fromDigits : List (Fin 10) -> Integer
         fromDigits = foldl (\a, b => 10 * a + cast b) 0
 
-jsonNumber : Parser Float
+jsonNumber : Parser Double
 jsonNumber = map scientificToFloat parseScientific
 
 jsonBool : Parser Bool
@@ -130,3 +130,37 @@ mutual
 
 jsonToplevelValue : Parser JsonValue
 jsonToplevelValue = (map JsonArray jsonArray) <|> (map JsonObject jsonObject)
+
+public
+parsJson : String -> Either String JsonValue
+parsJson s = parse jsonValue s
+
+public
+interface ToJson a where
+  toJson : a -> JsonValue
+
+public
+interface FromJson a where
+  fromJson : JsonValue -> Either String a
+
+
+public
+interface (ToJson a, FromJson a) => BothJson a where
+
+(ToJson a, FromJson a) => BothJson a where
+
+
+FromJson String where
+  fromJson (JsonString s) = Right s
+  fromJson o = Left $ "fromJson: " ++ show o ++ " is not a String"
+
+ToJson String where
+  toJson s = JsonString s
+
+public
+decode : FromJson a => String -> Either String a
+decode x = parsJson x >>= fromJson
+
+public
+encode : ToJson a => a -> String
+encode x = show $ toJson x

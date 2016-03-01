@@ -8,6 +8,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 data JsAST = JsEmpty
+           | JsNull
            | JsFun Text [Text] JsAST
            | JsReturn JsAST
            | JsApp Text [JsAST]
@@ -27,6 +28,7 @@ data JsAST = JsEmpty
            | JsForeign Text [JsAST]
            | JsAFun [Text] JsAST
            | JsB2I JsAST
+           | JsAppIfDef Text JsAST
             deriving (Show, Eq)
 
 
@@ -38,6 +40,7 @@ indent x =
 
 jsAst2Text :: JsAST -> Text
 jsAst2Text JsEmpty = ""
+jsAst2Text JsNull = "null"
 jsAst2Text (JsFun name args body) =
   T.concat [ "function ", name, "(", T.intercalate ", " args , "){\n"
            , indent $ jsAst2Text body
@@ -71,7 +74,7 @@ jsAst2Text (JsForeign code args) =
   in T.concat ["(", args_repl code 0 (map jsAst2Text args), ")"]
 jsAst2Text (JsAFun l body) = T.concat ["(function(", T.intercalate ", " l, "){", jsAst2Text body, "})"]
 jsAst2Text (JsB2I x) = jsAst2Text $ JsBinOp "+" x (JsInt 0)
-
+jsAst2Text (JsAppIfDef n x) = T.concat ["(function(a){if( a instanceof Array){return ",n,"(a)}else{return a}  } )(", jsAst2Text x, ")"] 
 
 case2Text :: (JsAST, JsAST) -> Text
 case2Text (x,y) =

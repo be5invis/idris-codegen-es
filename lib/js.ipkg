@@ -10,3 +10,6 @@ modules = Js.IO
         , Js.BrowserUtils
         , Js.Purecss
         , Js.BrowserNetwork
+        , Js.Json
+        , Js.ServiceTypes
+        , Js.Node 
