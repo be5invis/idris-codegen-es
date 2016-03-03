@@ -41,25 +41,25 @@ error 400 (MkRequest p) =
 
 public
 data HttpHandler = HandleGet String (JSIO String)
-                 | HandlePost String (String -> ASync (Either Int String) ) -- JSIO (Either String String) )
+                 | HandlePost String (String -> ASync String)
 
 handlerSelector : HttpHandler -> String
 handlerSelector (HandleGet s _) = "GET" ++ s
 handlerSelector (HandlePost s _) = "POST" ++ s
 
 serviceTy : Service -> Type
-serviceTy (MkService _ a b _) = (a -> ASync (Either Int b))
+serviceTy (MkService _ a b _) = (a -> ASync b)
 
 makeRawServ : (s:Service) -> serviceTy s -> HttpHandler
 makeRawServ (MkService s _ _ (dec, _, _, enc)) f =
   HandlePost s $ \x =>
         case dec x of
-          Left z => do
-            liftJSIO $ putStr' x
-            liftJSIO $ putStr' z
-            pure $ Left 400
+        --  Left z => do
+        --    liftJSIO $ putStr' x
+        --    liftJSIO $ putStr' z
+        --    pure $ Left 400
           Right z =>
-            map (map enc) $ f z
+            map enc $ f z
 
 public
 MakeServicesTy : List Service -> Type
@@ -74,19 +74,16 @@ public
 makeServices : (s : List Service) -> MakeServicesTy s
 makeServices x = makeServices' x []
 
-procInput : Request -> ( String -> ASync (Either Int String)) -> String -> JSIO ()
+procInput : Request -> (String -> ASync String) -> String -> JSIO ()
 procInput (MkRequest p) f body =
   do
     let async = f body
     setASync procRes async
   where
-    procRes x =
-      case x of
-        Left i => error i $ MkRequest p
-        Right s =>
-          do
-            jscall "%0[1].writeHead(200,{'Content-Type': 'text/plain'})" (Ptr -> JSIO ()) p
-            jscall "%0[1].end(%1)" (Ptr -> String -> JSIO ()) p s
+    procRes s =
+      do
+        jscall "%0[1].writeHead(200,{'Content-Type': 'text/plain'})" (Ptr -> JSIO ()) p
+        jscall "%0[1].end(%1)" (Ptr -> String -> JSIO ()) p s
 
 
 procReqRaw : SortedMap String HttpHandler -> Request -> JSIO ()
@@ -102,7 +99,6 @@ procReqRaw handlers r@(MkRequest p) = do
         end result r
     Just (HandlePost _ x) =>
       do
-        procInput r x "\"ola\""
         jscall
           ("(function(req){" ++
            "var body='';" ++
@@ -127,3 +123,34 @@ runServer port services =
   where
     servMap : SortedMap String (HttpHandler)
     servMap = fromList $ zip (map handlerSelector services) services
+
+
+httpRequest : String -> Int -> String -> String -> Maybe String -> ASync String
+httpRequest host port path method body =
+  MkASync $ \g => do
+                    http <- require "http"
+                    options <- getOpts
+                    req <- jscall
+                      ("%0.request(%1, function(res){ " ++
+                       "  var body = '';" ++
+                       "  res.on('data', function(data){body+=data});" ++
+                       "  res.on('end', function(){console.log(body);%2(body)})" ++
+                       "})")
+                       (Ptr -> Ptr -> (String -> JSIO ()) -> JSIO Ptr)
+                       http
+                       options
+                       g
+                    case body of
+                      Nothing => pure ()
+                      Just z => jscall "%0.write(%1)" (Ptr -> String -> JSIO ()) req z
+                    jscall "%0.end()" (Ptr -> JSIO ()) req
+  where
+    getOpts =
+      jscall
+        "{hostname:%0, port: %1, path: %2, method: %3}"
+        (String -> Int -> String -> String -> JSIO Ptr)
+        host port path method
+
+public
+httpGet : String -> Int -> String -> ASync String
+httpGet host port path = httpRequest host port path "GET" Nothing
