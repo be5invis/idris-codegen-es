@@ -1,5 +1,7 @@
 module Js.BrowserForms
 
+import Debug.Trace
+
 import Js.BrowserBase
 import public Js.BrowserUtils
 import Data.Vect
@@ -12,38 +14,62 @@ public
 MError : Type -> Type
 MError a = Either TyError a
 
-
+{-
 data FormUpdate a = UpdateValue a
                   | ResetForm
+
+Show (FormUpdate b) where
+  show ResetForm = "reseted"
+  show (UpdateValue _) = "updated"
 
 Functor FormUpdate where
   map f ResetForm = ResetForm
   map f (UpdateValue x) = UpdateValue $ f x
+-}
+
+errors : MError a -> List String
+errors (Right _) = []
+errors (Left x)  = x
+
+joinMErrors : (a -> b -> c) ->  MError a -> MError b -> MError c
+joinMErrors f (Right x) (Right y) = Right $ f x y
+joinMErrors _ x         y         = Left $ errors x ++ errors y
+
+FormState : Type -> Type
+FormState a = (a, Bool)
 
 public
 data Form : Type -> Type where
-  MkForm : MError a -> View (FormUpdate a) (MError a) -> Form a
+  MkForm : a -> View (FormState a) a -> (a -> MError b) -> (b -> a) -> Form b
 
-data FormEvent a = FormSetVal (Either TyError a)
+data FormEvent a = FormSetState a
                  | FormSubmitVal
 
-FormState : Type -> Type
-FormState a = (MError a, Maybe (FormUpdate a))
 
-form_update : MError a -> FormEvent a -> FormState a -> (FormState a, Maybe a)
-form_update w (FormSubmitVal) (Right x, _) =   ((w, Just ResetForm), Just x)
-form_update _ (FormSubmitVal) (Left s, _) = ((Left s, Nothing), Nothing)
-form_update _ (FormSetVal x) _ = ((x, Nothing) , Nothing)
+form_update : a -> (a-> MError b) -> FormEvent a -> FormState a -> (FormState a, Maybe b)
+form_update w out (FormSubmitVal) (x, _) =
+  case out x of
+    Right y => ((w, False), Just y)
+    Left e  => ((x, True), Nothing)
+form_update _ _ (FormSetState x) (_, s) = ((x, s), Nothing)
 
+renderError : (a -> MError b) -> FormState a -> View Void c
+renderError out (x, True) =
+  case out x of
+    Left errs => concat $ map (div . t) errs
+    Right _   => neutral
+renderError _ _ = neutral
 
 public
 buildForm : Form a -> View a a
-buildForm (MkForm z vw) =
-  let vw_sub = (FormSetVal <$> vw .?. snd) .+. (button FormSubmitVal "Submit")
+buildForm (MkForm z vw out inp) =
+  let vw_sub = form FormSubmitVal $ (FormSetState <$> vw)
+                <+> (dynView $ renderError out)
+                <+> submitButton "Submit"
   in foldView
-        (form_update z)
-        (\z, _ => (Right z, Just $ UpdateValue z) )
-        (z, Nothing)
+        (form_update z out)
+        (\y, _ => (inp y, False) )
+        (z, False)
         vw_sub
 
 
@@ -52,75 +78,72 @@ public
 textForm : Form String
 textForm =
   MkForm
-    (Right "")
-    (Right <$> textinput .$. procInput)
-  where
-    procInput ResetForm = ""
-    procInput (UpdateValue x) = x
+    ""
+    (textinput .$. fst)
+    Right
+    id
 
 public
-formMap : (b->Maybe a, a->Either TyError b) -> Form a -> Form b
-formMap (f,g) (MkForm z vw) =
-  MkForm (z >>= g) ( (>>=g) <$> vw .$. onset )
-  where
-    onset ResetForm = ResetForm
-    onset (UpdateValue x) =
-      case f x of
-        Nothing => ResetForm
-        Just z => UpdateValue z
+formMap : (b->a, a->MError b) -> Form a -> Form b
+formMap (f,g) (MkForm z vw out inp) =
+  MkForm z vw (\x => out x >>= g) (inp . f)
 
 public
 formMap' : (b->a, a->b) -> Form a -> Form b
-formMap' (f,g) form = formMap (\x => Just $ f x, \x => Right $ g x) form
+formMap' (f,g) form = formMap (f, \x => Right $ g x) form
 
 public
 selectForm : Vect (S n) String -> Form (Fin (S n))
 selectForm lst =
   MkForm
-    (Left ["No value selected"])
-    (procEvents <$> selectinput (" "::lst) .$. procInput )
+    FZ
+    (selectinput (" "::lst) .$. fst)
+    procEvents
+    FS
   where
-    procInput ResetForm = FZ
-    procInput (UpdateValue x) = FS x
     procEvents FZ = Left ["No value selected"]
     procEvents (FS x) = Right x
 
 
 public
 combine : Form k -> (a->k) -> (k->Form a) -> Form a
-combine (MkForm kZ selVw) getK kForm =
-  MkForm (kZ >>= getZ) ((dynView combineAForm) `chainView` (selVw .$. (getK<$>) ) )
+combine (MkForm kZ selVw out inp) getK kForm =
+  MkForm
+    resetState
+    (dynView combineAForm `chainView` (selVw .$. ((fst<$>) . fst))  )
+  --MkForm (kZ >>= getZ) ((dynView combineAForm) `chainView` (selVw .$. (getK<$>) ) )
   where
-    getZ : k -> MError a
-    getZ x = let (MkForm z _) = kForm x in z
+    resetState : MError (k, MError a)
+    resetState =
+      case kZ of
+        (Left e) => Left e
+        (Right x) => Right (out x, let MkForm z _ o _ = kForm (out x) in o z)
 
-    combineAForm : Either (FormUpdate a) (MError k) -> View Void (MError a)
-    combineAForm (Right (Right x)) =  let (MkForm _ vw) = kForm x in ii vw
-    combineAForm (Left (UpdateValue x) ) =  let (MkForm _ vw) = kForm (getK x) in static vw (UpdateValue x)
-    combineAForm _ = empty
+    combineAForm : Either (MError (k, MError a)) (MError k) -> View Void (MError k, MError a)
+    combineAForm (Left s) = neutral
+    combineAForm (Right (k ,Left e)) = let (MkForm _ vw _ _) = kForm x in ii ( \x =>  <$> vw)
+    combineAForm (Right (Right x)) =  let (MkForm _ vw) = kForm (getK x) in static vw (UpdateValue x)
+    --combineAForm (Left (UpdateValue x) ) =  let (MkForm _ vw) = kForm (getK x) in static vw (UpdateValue x)
+    --combineAForm (Left ResetForm ) = trace "reseted" $ t "reseted"-- let (MkForm _ vw) = kForm (getK x) in static vw (UpdateValue x)
+
+    --combineAForm _ = neutral
 
 --foldView : (i -> st -> (st, Maybe b)) -> (a -> st -> st) -> st -> View st i -> View a b
 --MkForm : MError a -> View (FormUpdate a) (MError a) -> Form a
 
-errors : MError a -> List String
-errors (Right _) = []
-errors (Left x)  = x
 
-joinErrors : MError a -> MError b -> MError (a, b)
-joinErrors (Right x) (Right y) = Right (x,y)
-joinErrors x         y         = Left $ errors x ++ errors y
 
 
 public
 tupleForm : Form a -> Form b -> Form (a,b)
 tupleForm (MkForm xz xvw) (MkForm yz yvw) =
   MkForm
-    (joinErrors xz yz)
+    (joinMErrors xz yz)
     (foldView
       updEvt
       updInp
       (xz,yz,Nothing)
-      (Left <$> xvw .?. ((fst <$>)<$>) . snd . snd .+. Right <$> yvw .?. ((snd<$>)<$>) . snd . snd )
+      ((Left <$> xvw .?. ((fst <$>)<$>) . snd . snd) <+> (Right <$> yvw .?. ((snd<$>)<$>) . snd . snd ))
     )
   where
     updEvt : Either (MError a) (MError b) -> (MError a, MError b, Maybe (FormUpdate (a,b)))
@@ -135,7 +158,7 @@ tupleForm (MkForm xz xvw) (MkForm yz yvw) =
 
 public
 vtrans : {c : Type} -> ({a:Type} -> {b:Type} -> View a b -> View a b) -> Form c -> Form c
-vtrans f (MkForm x v) = MkForm x $ f v
+vtrans f (MkForm x v o i) = MkForm x (f v) o i
 
 -------- utils ------------
 public

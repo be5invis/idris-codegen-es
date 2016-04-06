@@ -8,8 +8,11 @@ modules = Js.IO
         , Js.BrowserBase
         , Js.BrowserForms
         , Js.BrowserUtils
-        , Js.Purecss
+        , Js.Surface
         , Js.BrowserNetwork
         , Js.Json
         , Js.ServiceTypes
         , Js.Node 
+        , Js.Arango
+        , Js.SimpleData
+        , Js.RethinkDB

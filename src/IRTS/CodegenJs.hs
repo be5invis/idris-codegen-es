@@ -72,13 +72,29 @@ codegenJs ci = do
       filtered_decls = filter (\(k,v) -> Set.member k used ) sdecls
       out            = T.intercalate "\n" $ map doCodegen filtered_decls
   includes <- get_includes $ includes ci
-  TIO.writeFile (outputFile ci) $ T.concat [ includes
+  TIO.writeFile (outputFile ci) $ T.concat [ "(function(){\n\n"
+                                           , "\"use strict\";\n\n"
+                                           , includes
                                            , out, "\n"
                                            , start, "\n"
                                            , "\n\n"
+                                           , "\n}())"
                                            ]
 
-start = jsName (sMN 0 "runMain") `T.append` "();"
+trampoline = T.concat [ "var idris_trampoline = function(val){\n"
+                      , "   var res = val;\n"
+                      , "   while(res && res.call){\n"
+--                      , "     var cargs=[];\n"
+--                      , "     for(var k=0; k<res.args.length; ++k){\n"
+--                      , "        cargs.push(idris_trampoline(res.args[k]));\n"
+--                      , "     };\n"
+                      , "     res = res.call.apply(this, res.args);\n"
+                      , "   }\n"
+                      , "   return res\n"
+                      , "}\n"
+                      ]
+
+start = T.concat [trampoline,"\n\nidris_trampoline", "(", jsName (sMN 0 "runMain"), "());"]
 
 
 jsName :: Name -> Text
@@ -105,8 +121,10 @@ cgBody ret (SV (Glob n)) =
   ret $ JsApp (jsName n) []
 cgBody ret (SV (Loc i)) =
   ret $ JsVar $ loc i
-cgBody ret (SApp _ f args) =
+cgBody ret (SApp False f args) =
   ret $ JsApp (jsName f) (map cgVar args)
+cgBody ret (SApp True f args) =
+  ret $ JsAppTrampoline (jsName f) (map cgVar args)
 cgBody ret (SLet (Loc i) v sc) =
   JsSeq
     (cgBody (\x -> JsDecVar (loc i) x) v)
@@ -179,7 +197,7 @@ cgVar (Glob n) = JsVar $ jsName n
 cgConst :: Const -> JsAST
 cgConst (I i) = JsInt i
 cgConst (BI i) = JsInteger i
-cgConst (Ch c) = JsInt $ ord c--JsStr $ T.pack $ [c]
+cgConst (Ch c) = JsInt $ ord c
 cgConst (Str s) = JsStr $ T.pack s
 cgConst (Fl f) = JsDouble f
 cgConst (B8 x) = error "error B8"
@@ -202,16 +220,16 @@ cgOp (LSGe (ATInt _)) [l, r] = JsB2I $ JsBinOp ">=" l r
 cgOp LStrEq [l,r] = JsB2I $ JsBinOp "==" l r
 --cgOp LStrRev [x] = "strrev(" ++ x ++ ")"
 cgOp LStrLen [x] = JsForeign "%0.length" [x]
-cgOp LStrHead [x] = JsMethod x "charCodeAt" [JsInt 0] -- JsArrayProj (JsInt 0) x
-cgOp LStrIndex [x, y] = JsMethod x "charCodeAt" [y] -- JsArrayProj y x
+cgOp LStrHead [x] = JsMethod x "charCodeAt" [JsInt 0]
+cgOp LStrIndex [x, y] = JsMethod x "charCodeAt" [y]
 cgOp LStrTail [x] = JsMethod x "slice" [JsInt 1]
 cgOp LStrLt [l, r] = JsB2I $ JsBinOp "<" l r
 cgOp (LFloatStr) [x] = JsBinOp "+" x (JsStr "")
 cgOp (LIntStr _) [x] = JsBinOp "+" x (JsStr "")
-cgOp (LStrInt _) [x] = JsApp "parseInt" [x]
-cgOp (LStrFloat) [x] = JsApp "parseFloat" [x]
-cgOp (LChInt _) [x] = x --JsMethod x "charCodeAt" [JsInt 0]
-cgOp (LIntCh _) [x] = x --JsApp "String.fromCharCode" [x]
+cgOp (LStrInt _) [x] = JsBinOp "||" (JsApp "parseInt" [x]) (JsInt 0)
+cgOp (LStrFloat) [x] = JsBinOp "||" (JsApp "parseFloat" [x]) (JsInt 0)
+cgOp (LChInt _) [x] = x
+cgOp (LIntCh _) [x] = x
 cgOp (LSExt _ _) [x] = x
 cgOp (LZExt _ _) [x] = x
 cgOp (LIntFloat _) [x] = x
@@ -223,5 +241,5 @@ cgOp (LTrunc _ _) [x] = x
 cgOp LWriteStr [_,str] = JsApp "console.log" [str]
 --cgOp LReadStr [_] = "idris_readStr()"
 cgOp LStrConcat [l,r] = JsBinOp "+" l r
-cgOp LStrCons [l,r] = JsForeign "String.fromCharCode(%0) + %1" [l,r] --JsBinOp "+" l r
+cgOp LStrCons [l,r] = JsForeign "String.fromCharCode(%0) + %1" [l,r]
 cgOp op exps = error ("Operator " ++ show (op, exps) ++ " not implemented")

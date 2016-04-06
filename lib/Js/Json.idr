@@ -157,6 +157,12 @@ FromJson String where
 ToJson String where
   toJson s = JsonString s
 
+FromJson JsonValue where
+  fromJson = Right
+
+ToJson JsonValue where
+  toJson = id
+
 public
 decode : FromJson a => String -> Either String a
 decode x = parsJson x >>= fromJson

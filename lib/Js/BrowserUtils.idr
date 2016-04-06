@@ -8,8 +8,8 @@ static : View a b -> a -> View Void b
 static vw x = ii $ init vw x
 
 public
-dynbtn : View (a, String) a
-dynbtn = dynView (\(x,y) => button x y )
+dynbutton : View (a, String) a
+dynbutton = dynView (\(x,y) => button x y )
 
 public
 dyntext : View String a
@@ -20,13 +20,13 @@ listView : View a b -> View (List a) b
 listView v =
   dynView $ r
   where
-    r [] = empty
-    r (x::xs) = static v x .+. r xs
+    r [] = neutral
+    r (x::xs) = static v x <+> r xs
 
 public
 merge : List (View a b) -> View a b
-merge (x::xs) = x .+. merge xs
-merge []      = empty
+merge (x::xs) = x <+> merge xs
+merge []      = neutral
 
 
 public
@@ -34,7 +34,7 @@ dynViewMaybe : (a->View Void b) -> View (Maybe a) b
 dynViewMaybe r =
   dynView r2
   where
-    r2 Nothing = empty
+    r2 Nothing = neutral
     r2 (Just x) = r x
 
 
@@ -45,7 +45,7 @@ chainView f x =
     updEvt
     updInp
     Nothing
-    (Left <$> x .?. s2a .+. Right <$> f .?. id)
+    ((Left <$> x .?. s2a) <+> (Right <$> f .?. id))
   where
     s2a : Maybe (Either a b) -> Maybe a
     s2a (Just (Left x)) = Just x

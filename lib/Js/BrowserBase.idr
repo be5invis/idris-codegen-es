@@ -1,5 +1,7 @@
 module Js.BrowserBase
 
+import Debug.Trace
+
 import Js.IO
 import Js.BrowserForeigns
 import Control.Arrow
@@ -19,24 +21,37 @@ Event : Type
 Event = (Path, String)
 
 data EventDef = TargetValue Path
+              | FormSubmit Path
 
 Eq EventDef where
   (TargetValue x) == (TargetValue y) = x == y
+  (FormSubmit x) == (FormSubmit y) = x == y
+  _ == _ = False
 
 tpathE : (Path->Path) -> EventDef -> EventDef
 tpathE f (TargetValue x) = TargetValue $ f x
+tpathE f (FormSubmit x) = FormSubmit $ f x
 
 record Attributes where
   constructor MkAttributes
   value    : String
   class_   : List String
   selected : Bool
+  type     : String
+
+Show Attributes where
+  show x = "[value=" ++ (show $ value x) ++ "]"
 
 emptyAttrs : Attributes
-emptyAttrs = MkAttributes "" [] False
+emptyAttrs = MkAttributes "" [] False ""
 
 data Html : Type where
   HtmlElement : String -> Attributes -> List (String, EventDef) -> Either String (List Html) -> Html
+
+Show Html where
+  show (HtmlElement t a _ (Right l)) = "(" ++ t ++ show a ++ " " ++ (concat $ intersperse " " $ map show l) ++ ")"
+  show (HtmlElement t a _ (Left s)) = t ++ show a ++ "{" ++ s ++ "}"
+
 
 htmlElement : String -> List (String, EventDef) -> List Html -> Html
 htmlElement x y z = HtmlElement x emptyAttrs y $ Right z
@@ -44,17 +59,19 @@ htmlElement x y z = HtmlElement x emptyAttrs y $ Right z
 htmlText : String -> Html
 htmlText x = HtmlElement "span" emptyAttrs [] $ Left x
 
+total
 tpath' : (Path->Path) -> Html -> Html
 tpath' f (HtmlElement tag attrs events childs) =
   HtmlElement
     tag
     attrs
     (map (\(s, x) => (s, tpathE f x)) events)
-    (tpChilds childs)
+    (assert_total $ tpChilds childs)
   where
     tpChilds (Left x) = Left x
     tpChilds (Right x) = Right $ map (tpath' f) x
 
+total
 tpath : (Path->Path) -> List Html -> List Html
 tpath f =  map (tpath' f)
 
@@ -96,16 +113,16 @@ record App a b where
   update : a -> b -> (b, ASync a)
 
 setApp : App a b -> JSIO ()
-setApp z = jscall "b$app = %0" (Ptr -> JSIO ()) (believe_me z)
+setApp z = jscall "window.b$app = %0" (Ptr -> JSIO ()) (believe_me z)
 
 getApp : JSIO (App a b)
-getApp = believe_me <$> jscall "b$app" ( () -> JSIO Ptr) ()
+getApp = believe_me <$> jscall "window.b$app" ( () -> JSIO Ptr) ()
 
 setLastTree : List Html -> JSIO ()
-setLastTree z = jscall "b$lastView = %0" (Ptr -> JSIO () ) (believe_me z)
+setLastTree z = jscall "window.b$lastView = %0" (Ptr -> JSIO () ) (believe_me z)
 
 getLastTree : JSIO (List Html)
-getLastTree = believe_me <$> jscall "b$lastView" (() -> JSIO Ptr) ()
+getLastTree = believe_me <$> jscall "window.b$lastView" (() -> JSIO Ptr) ()
 
 
 
@@ -114,6 +131,10 @@ eventDef2JS procEvt (TargetValue p) evt =
   do
     val <- jscall "%0.target.value" (Ptr-> JSIO String) evt
     procEvt (p, val)
+eventDef2JS procEvt (FormSubmit p) evt =
+  do
+    jscall "%0.preventDefault()" (Ptr -> JSIO ()) evt
+    procEvt (p, "submit")
 
 addEventListeners : (Event -> JSIO ()) -> Ptr -> List (String, EventDef) -> JSIO ()
 addEventListeners procEvt node [] =
@@ -223,6 +244,7 @@ mutual
     do
       lastTree <- getLastTree
       node <- getElementById "root"
+      putStr' $ show $ newtree
       diffUpdateChilds procEvt node 0 lastTree newtree
       setLastTree newtree
 
@@ -244,10 +266,6 @@ mutual
           Nothing  => refreshApp $ record {view = afterEvtView} app
           Just val => do
             updValApp val (record {view = afterEvtView} app)
-          --  let (newState, act) = update app val $ state app
-          --  let newView = stepInput newState afterEvtView
-          --  setASync (makeProcASync t2) act
-          --  refreshApp $ record {state = newState, view = newView} app
 
   refreshApp : App t1 t2 -> JSIO ()
   refreshApp {t1} {t2} x =
@@ -335,9 +353,7 @@ public
 (.$.) : View b c -> (a-> b) -> View a c
 (.$.) v f = v .?. (\x => Just $ f x)
 
-
-infixr 2 .+.
-
+total
 oupdEvt : Event -> (View a c, View b c) -> ((View a c, View b c), Maybe c)
 oupdEvt (PathFst z, val) (x, y) =
   let (nx, me) = stepEvent (z,val) x
@@ -345,10 +361,37 @@ oupdEvt (PathFst z, val) (x, y) =
 oupdEvt (PathSnd z, val) (x, y) =
   let (ny, me) = stepEvent (z, val) y
   in ((x,ny), me)
+oupdEvt (Here, _) z = (z, Nothing)
 
+total
 ovw : (View a c, View b c) -> List Html
 ovw (x, y) = (tpath PathFst $ render x) ++ (tpath PathSnd $ render y)
 
+public
+inert : Html -> View a b
+inert x =
+  MkView
+    ()
+    (\_ => [x])
+    (\_, _ => ((), Nothing))
+    (\_,_ => ())
+
+Semigroup (View a c) where
+  x <+> y =
+      MkView
+      (x,y)
+      ovw
+      oupdEvt
+      (\z,(x,y) => (stepInput z x, stepInput z y))
+
+Monoid (View a c) where
+  neutral =
+    MkView
+      ()
+      (\x => [])
+      (\_, _ => ((), Nothing))
+      (\_, _ => ())
+{-
 public
 (.+.): View a c -> View a c -> View a c
 (.+.) x y =
@@ -357,8 +400,9 @@ public
   ovw
   oupdEvt
   (\z,(x,y) => (stepInput z x, stepInput z y))
+-}
 
-
+{-
 public
 empty : View a b
 empty =
@@ -367,6 +411,7 @@ empty =
     (\x => [])
     (\_, _ => ((), Nothing))
     (\_, _ => ())
+-}
 
 public
 textinput : View String String
@@ -404,29 +449,26 @@ selectinput opts =
         []
         [htmlText lbl]
     render : Vect k String -> Fin k -> List Html
-    render opts sel =
-      [htmlElement
-        "select"
-        [("change", TargetValue Here)]
-        (toList $ map (renderOption sel) (addindex opts))]
+    render opts sel = trace ("r" ++ (show $ finToInteger $ sel)) $
+      [ attrChangeHtml (record {value = show $ finToInteger sel}) $
+          htmlElement
+            "select"
+              [("change", TargetValue Here)]
+              (toList $ map (renderOption sel) (addindex opts))
+      ]
     readSel : (k:Nat) -> String -> Fin (S k)
     readSel u s =
       let i = cast s
       in case integerToFin i (S u) of
-            Nothing => FZ
-            Just x  => x
+            Nothing => trace ("u0") $ FZ
+            Just x  => trace ("u" ++ (show $ finToInteger x)) $ x
     updEvt : Event -> Fin (S k) -> (Fin (S k), Maybe (Fin (S k)))
     updEvt {k} (_,s) _ = let i = readSel k s in (i, Just i)
-    updInput x z = x
+    updInput x _ = trace ("i" ++ (show $ finToInteger x)) $ x
 
 public
 t : String -> View a b
-t x =
-  MkView
-    ()
-    (\_ => [htmlText x])
-    (\_, _ => ((), Nothing))
-    (\_,_ => ())
+t x = inert $ htmlText x
 
 public
 button : b -> String -> View a b
@@ -440,6 +482,18 @@ button val lbl =
     render () = [htmlElement "button" [("click", TargetValue Here)] [htmlText lbl] ]
     updEvt _ _ = ((), Just val)
 
+
+public
+a : b -> String -> View a b
+a val lbl =
+  MkView
+    ()
+    render
+    updEvt
+    (\_, _ => ())
+  where
+    render () = [htmlElement "a" [("click", TargetValue Here)] [htmlText lbl] ]
+    updEvt _ _ = ((), Just val)
 
 public
 foldView : (i -> st -> (st, Maybe b)) -> (a -> st -> st) -> st -> View st i -> View a b
@@ -471,6 +525,71 @@ div x = groupElement "div" x
 public
 span : View a b -> View a b
 span x = groupElement "span" x
+
+public
+ul : View a b -> View a b
+ul x = groupElement "ul" x
+
+public
+li : View a b -> View a b
+li x = groupElement "li" x
+
+public
+header : View a b -> View a b
+header x = groupElement "header" x
+
+public
+nav : View a b -> View a b
+nav x = groupElement "nav" x
+
+public
+h1 : View a b -> View a b
+h1 x = groupElement "h1" x
+
+public
+form : b -> View a b -> View a b
+form onsubmit (MkView z r ue ui) =
+  MkView
+    z
+    (\x => [ htmlElement
+                "form"
+                [("submit", FormSubmit $ PathFst $ Here)]
+                (tpath PathSnd $ r x)
+           ]
+    )
+    updEvt
+    ui
+  where
+    updEvt (PathFst p, "submit") x = (x, Just onsubmit)
+    updEvt (PathSnd p, val) x = ue (p,val) x
+
+public
+submitButton : String -> View a b
+submitButton lbl = inert $ attrChangeHtml (record{type = "submit"}) $ htmlElement "button" [] [htmlText lbl]
+
+{-
+switchView : Eq b => (a->b) -> (b -> View a c) -> View a c
+switchView {a} {b} {c} proj pView =
+  MkView
+    Nothing
+    r
+    updEvt
+    updInp
+  where
+    r: Maybe (b, View a c) -> List Html
+    r Nothing = []
+    r (Just (k, v)) = render v
+    updEvt : Event -> Maybe (b, View a c) -> (Maybe (b, View a c), Maybe c)
+    updEvt _ Nothing = (Nothing, Nothing)
+    updEvt x (Just (k, v)) = let (nv, mv) = stepEvent x v in (Just (k,nv), mv)
+    start : a -> Maybe (b, View a c)
+    start x = Just (proj x, init (pView $ proj x) x)
+    updInp : a -> Maybe (b, View a c) -> Maybe (b, View a c)
+    updInp x Nothing = Just (proj x, init (pView $ proj x) x)
+    updInp x (Just (k,v)) =
+      if proj x == k then Just (k, stepInput x v)
+        else updInp x Nothing
+-}
 
 public
 dynView : (a->View Void b) -> View a b

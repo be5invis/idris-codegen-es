@@ -13,4 +13,4 @@ mutual
 
 main : JSIO ()
 main = do
-  console_log $ show $ is_even 10
+  putStr' $ show $ is_even 100001

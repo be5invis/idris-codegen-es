@@ -15,7 +15,7 @@ Show TstExp where
 data TstExpForms = NumberForm | PlusForm
 
 indentV : Nat -> View a b -> View a b
-indentV i x = div $ t (pack $ the (List Char) $ replicate i '-') .+. x
+indentV i x = div $ t (pack $ the (List Char) $ replicate i '-') <+> x
 
 indentF : Nat -> Form a -> Form a
 indentF i = vtrans (indentV i)
@@ -37,12 +37,12 @@ tstForm i =
 
 vw : View TstExp TstExp
 vw = div $    (buildForm $ tstForm 0)
-           .+.  div (dyntext .$. show)
+           <+>  div (dyntext .$. show)
 
 
 page : App TstExp TstExp
 page = MkApp
-        (Pos 1)
+        (Plus (Pos 6) (Neg 7))
         vw
         (\x, y => (x, never))
 
