@@ -2,7 +2,7 @@ module Js.BrowserUtils
 
 import Js.BrowserBase
 import Js.IO
-
+{-
 public
 static : View a b -> a -> View Void b
 static vw x = ii $ init vw x
@@ -71,3 +71,4 @@ viewApp vw =
     ()
     (ii $ io vw)
     (\x, y => ((), never))
+-}

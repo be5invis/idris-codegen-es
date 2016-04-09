@@ -1,11 +1,9 @@
-module Js.BrowserBase
 
-import Debug.Trace
+module Js.BrowserBase
 
 import Js.IO
 import Js.BrowserForeigns
-import Control.Arrow
-import Data.Vect
+
 
 data Path = Here
           | PathFst Path
@@ -39,19 +37,11 @@ record Attributes where
   selected : Bool
   type     : String
 
-Show Attributes where
-  show x = "[value=" ++ (show $ value x) ++ "]"
-
 emptyAttrs : Attributes
 emptyAttrs = MkAttributes "" [] False ""
 
 data Html : Type where
   HtmlElement : String -> Attributes -> List (String, EventDef) -> Either String (List Html) -> Html
-
-Show Html where
-  show (HtmlElement t a _ (Right l)) = "(" ++ t ++ show a ++ " " ++ (concat $ intersperse " " $ map show l) ++ ")"
-  show (HtmlElement t a _ (Left s)) = t ++ show a ++ "{" ++ s ++ "}"
-
 
 htmlElement : String -> List (String, EventDef) -> List Html -> Html
 htmlElement x y z = HtmlElement x emptyAttrs y $ Right z
@@ -76,55 +66,58 @@ tpath : (Path->Path) -> List Html -> List Html
 tpath f =  map (tpath' f)
 
 abstract
-data View : Type -> Type -> Type where
-  MkView : d -> (d->List Html) -> (Event->d->(d, Maybe b)) -> (a->d->d) -> View a b
+data View : Type -> Type where
+  MkView : List Html -> (Event -> Maybe a) -> View a
 
+total
+getOfTwo : (Event -> Maybe a) -> (Event -> Maybe a) -> Event -> Maybe a
+getOfTwo g1 _ (PathFst x, v) = g1 (x,v)
+getOfTwo _ g2 (PathSnd x, v) = g2 (x,v)
+getOfTwo _ _ (Here,_) = Nothing
 
-viewMap : (a->b) -> View c a -> View c b
-viewMap f (MkView z vw updEvent updInput) =
-  MkView
-    z
-    vw
-    (\e, s => let (news, res) = updEvent e s in (news, f <$> res) )
-    updInput
+Semigroup (View a) where
+  (MkView h1 g1) <+> (MkView h2 g2) =
+      MkView
+        (tpath PathFst h1 ++ tpath PathSnd h2)
+        (getOfTwo g1 g2)
 
-Functor (View c) where
-  map = viewMap
-
-render : View a b -> List Html
-render (MkView z vw _ _) = vw z
-
-stepEvent : Event -> View a b -> (View a b, Maybe b)
-stepEvent e (MkView z vw upd1 upd2) =
-  let (newz, mb) = upd1 e z
-  in (MkView newz vw upd1 upd2, mb)
-
-stepInput : a -> View a b -> View a b
-stepInput x (MkView z vw upd1 upd2) =
-  let newz = upd2 x z
-  in MkView newz vw upd1 upd2
-
+Monoid (View a) where
+  neutral =
+    MkView
+      []
+      (\_ => Nothing)
 
 public
 record App a b where
   constructor MkApp
   state : b
-  view : View b a
+  render : b -> View a
   update : a -> b -> (b, ASync a)
 
-setApp : App a b -> JSIO ()
-setApp z = jscall "window.b$app = %0" (Ptr -> JSIO ()) (believe_me z)
+record AppState a b where
+  constructor MkAppState
+  theApp : App a b
+  theTree : List Html
+  getEvt : Event -> Maybe a
 
-getApp : JSIO (App a b)
-getApp = believe_me <$> jscall "window.b$app" ( () -> JSIO Ptr) ()
+createAppState : App a b -> AppState a b
+createAppState x =
+  let MkView tree f = (render x) (state x)
+  in MkAppState x tree f
 
-setLastTree : List Html -> JSIO ()
-setLastTree z = jscall "window.b$lastView = %0" (Ptr -> JSIO () ) (believe_me z)
+stepAppState : AppState a b -> a -> (AppState a b, ASync a)
+stepAppState apSt x =
+  let ap = theApp apSt
+      (newS, async) = (update ap) x (state ap)
+      MkView tree f = (render ap) newS
+  in (record{theApp->state = newS, theTree = tree, getEvt = f} apSt, async)
 
-getLastTree : JSIO (List Html)
-getLastTree = believe_me <$> jscall "window.b$lastView" (() -> JSIO Ptr) ()
 
+setAppState : Ptr -> AppState a b -> JSIO ()
+setAppState ctx z = jscall "%0.app = %1" (Ptr -> Ptr -> JSIO ()) ctx (believe_me z)
 
+getAppState : Ptr -> JSIO (AppState a b)
+getAppState ctx = believe_me <$> jscall "%0.app" ( Ptr -> JSIO Ptr) ctx
 
 eventDef2JS : (Event -> JSIO ()) -> EventDef -> Ptr -> JSIO ()
 eventDef2JS procEvt (TargetValue p) evt =
@@ -239,374 +232,71 @@ mutual
       diffUpdateChildsAux (Left _) (Right x)=
         addChilds procEvt node x
 
-  updateView : (Event -> JSIO ()) -> List Html -> JSIO ()
-  updateView procEvt newtree =
+  updateView : String -> (Event -> JSIO ()) -> List Html -> List Html -> JSIO ()
+  updateView root procEvt lastTree newtree =
     do
-      lastTree <- getLastTree
-      node <- getElementById "root"
-      putStr' $ show $ newtree
+      node <- getElementById root
       diffUpdateChilds procEvt node 0 lastTree newtree
-      setLastTree newtree
 
 mutual
-
-  makeProcASync : Type -> a -> JSIO ()
-  makeProcASync {a} tSt val =
+  makeProcVal : String -> Ptr -> (a: Type) -> Type -> a -> JSIO ()
+  makeProcVal rootName ctx a b val =
     do
-      app <- the (App a tSt) <$> getApp
-      updValApp val app
+      appSt <- the (AppState a b) <$> getAppState ctx
+      let (newAppSt, async) = stepAppState appSt val
+      updateView rootName (makeProcEvt rootName ctx a b) (theTree appSt) (theTree newAppSt)
+      setAppState ctx newAppSt
+      setASync (makeProcVal rootName ctx a b) async
 
-
-  makeProcEvt : Type -> Type -> Event -> JSIO ()
-  makeProcEvt t1 t2 evt =
+  makeProcEvt : String -> Ptr -> Type -> Type -> Event -> JSIO ()
+  makeProcEvt rootName ctx a b evt =
     do
-      app <- the (App t1 t2) <$> getApp
-      let (afterEvtView, maybeVal) = stepEvent evt $ view app
-      case maybeVal of
-          Nothing  => refreshApp $ record {view = afterEvtView} app
-          Just val => do
-            updValApp val (record {view = afterEvtView} app)
-
-  refreshApp : App t1 t2 -> JSIO ()
-  refreshApp {t1} {t2} x =
-    do
-      setApp x
-      updateView (makeProcEvt t1 t2) (render $ view x)
-
-  updValApp : a -> App a b -> JSIO ()
-  updValApp {a} {b} val app =
-    do
-      let (newState, act) = update app val $ state app
-      let newView = stepInput newState (view app)
-      setASync (makeProcASync b) act
-      refreshApp $ record {state = newState, view = newView} app
-
+      appSt <- the (AppState a b) <$> getAppState ctx
+      case (getEvt appSt) evt of
+        Nothing => pure ()
+        Just v => makeProcVal rootName ctx a b v
 
 public
 runApp : App a b -> JSIO ()
 runApp {a} {b} app =
   do
+    let rootName = "root"
     bo <- body
     root <- createElement "div"
-    setAttribute root ("id","root")
+    setAttribute root ("id",rootName)
     appendChild bo root
-    let newView = stepInput (state app) (view app)
-    let newApp = record {view = newView} app
-    setApp newApp
-    let h = render $ view newApp
-    setLastTree []
-    updateView (makeProcEvt a b) h
+    let appSt = createAppState app
+    ctx <- jscall "{}" (() -> JSIO Ptr) ()
+    --let newView = stepInput (state app) (view app)
+    --let newApp = record {view = newView} app
+    --setApp newApp
+    --let h = render $ view newApp
+    --setLastTree []
+    updateView rootName (makeProcEvt rootName ctx a b) [] (theTree appSt)
+    setAppState ctx appSt
 
 
-attrChangeHtml : (Attributes -> Attributes) -> Html -> Html
-attrChangeHtml f (HtmlElement x attrs y z) = HtmlElement x (f attrs) y z
 
-attrChange : (Attributes -> Attributes) -> View a b -> View a b
-attrChange f (MkView x r y z) = MkView x ((map $ attrChangeHtml f) . r) y z
 
--------- view primitives --------
-
-|||Ignores Input, making a view that accepts any input
-public
-ii : View a b -> View c b
-ii (MkView z r ue ui) = MkView z r ue (\x, y => y)
-
-||| Ignores Ouput, making a view that makes no output, hence the outut can have any type needed
-public
-io : View a b -> View a c
-io (MkView z r ue ui) = MkView z r (\x,y => (fst $ ue x y ,Nothing)) ui
+----- primitives
 
 public
-init : View a b -> a -> View a b
-init = flip stepInput
-
-infixl 4 .$. , .?. , <?>
-
-public
-(<?>) : (a->Maybe b) -> View c a -> View c b
-(<?>) f (MkView z r ue ui) =
-  MkView
-    z
-    r
-    updEv
-    ui
-  where
-    updEv x s =
-      let (ns, mv) = ue x s
-      in (ns, mv >>= f)
-
-public
-(.?.) : View b c -> (a-> Maybe b) -> View a c
-(.?.) (MkView z r ue ui) f =
-  MkView
-    z
-    r
-    ue
-    updInput
-  where
-    updInput x s =
-      case f x of
-        Just z  => ui z s
-        Nothing => s
-
-public
-(.$.) : View b c -> (a-> b) -> View a c
-(.$.) v f = v .?. (\x => Just $ f x)
-
-total
-oupdEvt : Event -> (View a c, View b c) -> ((View a c, View b c), Maybe c)
-oupdEvt (PathFst z, val) (x, y) =
-  let (nx, me) = stepEvent (z,val) x
-  in ((nx,y), me)
-oupdEvt (PathSnd z, val) (x, y) =
-  let (ny, me) = stepEvent (z, val) y
-  in ((x,ny), me)
-oupdEvt (Here, _) z = (z, Nothing)
-
-total
-ovw : (View a c, View b c) -> List Html
-ovw (x, y) = (tpath PathFst $ render x) ++ (tpath PathSnd $ render y)
-
-public
-inert : Html -> View a b
-inert x =
-  MkView
-    ()
-    (\_ => [x])
-    (\_, _ => ((), Nothing))
-    (\_,_ => ())
-
-Semigroup (View a c) where
-  x <+> y =
-      MkView
-      (x,y)
-      ovw
-      oupdEvt
-      (\z,(x,y) => (stepInput z x, stepInput z y))
-
-Monoid (View a c) where
-  neutral =
-    MkView
-      ()
-      (\x => [])
-      (\_, _ => ((), Nothing))
-      (\_, _ => ())
-{-
-public
-(.+.): View a c -> View a c -> View a c
-(.+.) x y =
-  MkView
-  (x,y)
-  ovw
-  oupdEvt
-  (\z,(x,y) => (stepInput z x, stepInput z y))
--}
-
-{-
-public
-empty : View a b
-empty =
-  MkView
-    ()
-    (\x => [])
-    (\_, _ => ((), Nothing))
-    (\_, _ => ())
--}
-
-public
-textinput : View String String
-textinput =
-  MkView
-    ""
-    (\x => [ attrChangeHtml (record {value = x}) $ htmlElement "input"  [("change", TargetValue Here)] [] ])
-    updEvt
-    (\x, y => x)
-  where
-    updEvt (_,s) y = (s,Just s)
-
-
-addindex : Vect k a -> Vect k (Fin k, a)
-addindex {k} x =
-  zip (idx k) x
-  where
-    idx : (k:Nat) -> Vect k (Fin k)
-    idx Z = []
-    idx (S i) = FZ :: (map FS $ idx i)
-
-public
-selectinput : Vect (S k) String -> View (Fin (S k)) (Fin (S k))
-selectinput opts =
-  MkView
-    FZ
-    (render opts)
-    updEvt
-    updInput
-  where
-    renderOption : Fin k -> (Fin k, String) -> Html
-    renderOption sel (pos, lbl) =
-      attrChangeHtml (record {selected = pos == sel, value = show $ finToNat pos}) $ htmlElement
-        "option"
-        []
-        [htmlText lbl]
-    render : Vect k String -> Fin k -> List Html
-    render opts sel = trace ("r" ++ (show $ finToInteger $ sel)) $
-      [ attrChangeHtml (record {value = show $ finToInteger sel}) $
-          htmlElement
-            "select"
-              [("change", TargetValue Here)]
-              (toList $ map (renderOption sel) (addindex opts))
-      ]
-    readSel : (k:Nat) -> String -> Fin (S k)
-    readSel u s =
-      let i = cast s
-      in case integerToFin i (S u) of
-            Nothing => trace ("u0") $ FZ
-            Just x  => trace ("u" ++ (show $ finToInteger x)) $ x
-    updEvt : Event -> Fin (S k) -> (Fin (S k), Maybe (Fin (S k)))
-    updEvt {k} (_,s) _ = let i = readSel k s in (i, Just i)
-    updInput x _ = trace ("i" ++ (show $ finToInteger x)) $ x
-
-public
-t : String -> View a b
-t x = inert $ htmlText x
-
-public
-button : b -> String -> View a b
+button : a -> String -> View a
 button val lbl =
   MkView
-    ()
-    render
-    updEvt
-    (\_, _ => ())
-  where
-    render () = [htmlElement "button" [("click", TargetValue Here)] [htmlText lbl] ]
-    updEvt _ _ = ((), Just val)
-
+    [htmlElement "button" [("click", TargetValue Here)] [htmlText lbl]]
+    (\_ => Just val)
 
 public
-a : b -> String -> View a b
-a val lbl =
+text : String -> View a
+text s =
   MkView
-    ()
-    render
-    updEvt
-    (\_, _ => ())
-  where
-    render () = [htmlElement "a" [("click", TargetValue Here)] [htmlText lbl] ]
-    updEvt _ _ = ((), Just val)
+    [htmlText s]
+    (\_=> Nothing)
 
 public
-foldView : (i -> st -> (st, Maybe b)) -> (a -> st -> st) -> st -> View st i -> View a b
-foldView onEvt onSet z vw =
+textinput : View String
+textinput =
   MkView
-    (init vw z, z)
-    (render . fst)
-    updEvt
-    (\u, (v, s) => let news = onSet u s in (stepInput news v, news))
-  where
-    updEvt e (v, s) =
-      case stepEvent e v of
-        (newv, Nothing) => ((newv, s), Nothing)
-        (newv, Just val) => let (news, res) = onEvt val s in ((stepInput news newv, news), res)
-
-
-groupElement : String -> View a b -> View a b
-groupElement tag (MkView z r ue ui) =
-  MkView
-    z
-    (\x => [htmlElement tag [] (r x) ])
-    ue
-    ui
-
-public
-div : View a b -> View a b
-div x = groupElement "div" x
-
-public
-span : View a b -> View a b
-span x = groupElement "span" x
-
-public
-ul : View a b -> View a b
-ul x = groupElement "ul" x
-
-public
-li : View a b -> View a b
-li x = groupElement "li" x
-
-public
-header : View a b -> View a b
-header x = groupElement "header" x
-
-public
-nav : View a b -> View a b
-nav x = groupElement "nav" x
-
-public
-h1 : View a b -> View a b
-h1 x = groupElement "h1" x
-
-public
-form : b -> View a b -> View a b
-form onsubmit (MkView z r ue ui) =
-  MkView
-    z
-    (\x => [ htmlElement
-                "form"
-                [("submit", FormSubmit $ PathFst $ Here)]
-                (tpath PathSnd $ r x)
-           ]
-    )
-    updEvt
-    ui
-  where
-    updEvt (PathFst p, "submit") x = (x, Just onsubmit)
-    updEvt (PathSnd p, val) x = ue (p,val) x
-
-public
-submitButton : String -> View a b
-submitButton lbl = inert $ attrChangeHtml (record{type = "submit"}) $ htmlElement "button" [] [htmlText lbl]
-
-{-
-switchView : Eq b => (a->b) -> (b -> View a c) -> View a c
-switchView {a} {b} {c} proj pView =
-  MkView
-    Nothing
-    r
-    updEvt
-    updInp
-  where
-    r: Maybe (b, View a c) -> List Html
-    r Nothing = []
-    r (Just (k, v)) = render v
-    updEvt : Event -> Maybe (b, View a c) -> (Maybe (b, View a c), Maybe c)
-    updEvt _ Nothing = (Nothing, Nothing)
-    updEvt x (Just (k, v)) = let (nv, mv) = stepEvent x v in (Just (k,nv), mv)
-    start : a -> Maybe (b, View a c)
-    start x = Just (proj x, init (pView $ proj x) x)
-    updInp : a -> Maybe (b, View a c) -> Maybe (b, View a c)
-    updInp x Nothing = Just (proj x, init (pView $ proj x) x)
-    updInp x (Just (k,v)) =
-      if proj x == k then Just (k, stepInput x v)
-        else updInp x Nothing
--}
-
-public
-dynView : (a->View Void b) -> View a b
-dynView rf =
-  MkView
-    Nothing
-    r
-    updEvt
-    updInp
-  where
-    r : Maybe (View Void b) -> List Html
-    r Nothing = []
-    r (Just v) = render v
-    updEvt _ Nothing = (Nothing,Nothing)
-    updEvt x (Just v) = let (ns, mv) = stepEvent x v in (Just ns, mv)
-    updInp x _ = Just $ rf x
-
-public
-addClass : String -> View a b -> View a b
-addClass classNew = attrChange (\x => record {class_ = classNew :: class_ x } x)
+    [ htmlElement "input"  [("change", TargetValue Here)] [] ]
+    (\(_, x) => Just x)

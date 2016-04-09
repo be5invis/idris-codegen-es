@@ -5,7 +5,7 @@ import Debug.Trace
 import Js.BrowserBase
 import public Js.BrowserUtils
 import Data.Vect
-
+{-
 public
 TyError : Type
 TyError = List String
@@ -14,18 +14,6 @@ public
 MError : Type -> Type
 MError a = Either TyError a
 
-{-
-data FormUpdate a = UpdateValue a
-                  | ResetForm
-
-Show (FormUpdate b) where
-  show ResetForm = "reseted"
-  show (UpdateValue _) = "updated"
-
-Functor FormUpdate where
-  map f ResetForm = ResetForm
-  map f (UpdateValue x) = UpdateValue $ f x
--}
 
 errors : MError a -> List String
 errors (Right _) = []
@@ -171,3 +159,4 @@ natForm =
   formMap (Just . cast, i2n) integerForm
   where
     i2n x = if x < 0 then Left [show x ++ "is not a Nat"] else Right $ fromInteger x
+-}

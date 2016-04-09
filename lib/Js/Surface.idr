@@ -4,7 +4,7 @@ import Js.BrowserBase
 import Data.Vect
 
 data BtnColor = BtnRed | BtnYellow | BtnGreen | BtnBlue | BtnPrimary | BtnSecondary | BtnAccent
-
+{-
 btnColor2css : BtnColor -> String
 btnColor2css BtnRed = "btn-red"
 btnColor2css BtnYellow = "btn-yello"
@@ -18,7 +18,7 @@ public
 btnRaised : BtnColor -> b -> String -> View a b
 btnRaised c v l =
   addClass ("btn-raised" ++ btnColor2css c) $ button v l
-
+-}
 {-
 navigation : String -> List (String, b, List (String, b) ) -> View Void b
 navigation title items =
