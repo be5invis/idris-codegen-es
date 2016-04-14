@@ -9,7 +9,7 @@ import Js.SimpleData
 require : String -> JSIO Ptr
 require s = jscall "require(%0)" (String -> JSIO Ptr) s
 
-public
+export
 data Connection = MkConnection Ptr Ptr
 
 toEitherErr : Ptr -> JSIO (Either String Ptr)
@@ -19,7 +19,7 @@ toEitherErr x =
     if eq == 1 then Left <$> jscall "%0[0] + ''" (Ptr -> JSIO String) x
       else Right <$> jscall "%0[1]" (Ptr -> JSIO Ptr) x
 
-public
+export
 connect' : String -> Int -> JSIO (Either String Connection)
 connect' host port =
   do
@@ -33,7 +33,7 @@ connect' host port =
     ec <- toEitherErr pc
     pure $ MkConnection r <$> ec
 
-public
+export
 connect : String -> JSIO Connection
 connect host =
   do
@@ -46,7 +46,7 @@ connect host =
 data Table : SDataObj -> Type where
   MkTable : String -> (a : SDataObj) -> Table a
 
-public
+export
 data Query : SDataTy -> Type where
   BulkInsert : Table a -> List (iSDataObj a) -> Query (SObj [])
 
@@ -58,7 +58,7 @@ mkQuery p (BulkInsert (MkTable name ptype) vals) =
     v <- encodeJS (SList $ SObj ptype) vals
     jscall "%0.insert(%1)" (Ptr -> Ptr -> JSIO Ptr) p v
 
-public
+export
 runQuery : String -> Connection -> Query a -> JSIO (Either String (iSDataTy a))
 runQuery {a} database (MkConnection r c) q =
   do

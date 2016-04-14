@@ -2,6 +2,11 @@ module Js.BrowserUtils
 
 import Js.BrowserBase
 import Js.IO
+
+export
+textinput' : View String
+textinput' = textinput Nothing
+
 {-
 public
 static : View a b -> a -> View Void b

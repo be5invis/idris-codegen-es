@@ -32,31 +32,33 @@ tpathE f (FormSubmit x) = FormSubmit $ f x
 
 record Attributes where
   constructor MkAttributes
-  value    : String
   class_   : List String
   selected : Bool
   type     : String
 
 emptyAttrs : Attributes
-emptyAttrs = MkAttributes "" [] False ""
+emptyAttrs = MkAttributes [] False ""
 
-data Html : Type where
-  HtmlElement : String -> Attributes -> List (String, EventDef) -> Either String (List Html) -> Html
+record Html where
+  constructor MkHtml
+  tag : String
+  attrs : Attributes
+  eventListeners : List (String, EventDef)
+  content : Either String (List Html)
+  newVal : Maybe String
 
 htmlElement : String -> List (String, EventDef) -> List Html -> Html
-htmlElement x y z = HtmlElement x emptyAttrs y $ Right z
+htmlElement x y z = MkHtml x emptyAttrs y (Right z) Nothing
 
 htmlText : String -> Html
-htmlText x = HtmlElement "span" emptyAttrs [] $ Left x
+htmlText x = MkHtml "span" emptyAttrs [] (Left x) Nothing
 
 total
 tpath' : (Path->Path) -> Html -> Html
-tpath' f (HtmlElement tag attrs events childs) =
-  HtmlElement
-    tag
-    attrs
-    (map (\(s, x) => (s, tpathE f x)) events)
-    (assert_total $ tpChilds childs)
+tpath' f htm =
+  record { eventListeners = map (\(s, x) => (s, tpathE f x)) (eventListeners htm)
+         , content = assert_total $ tpChilds (content htm)
+         } htm
   where
     tpChilds (Left x) = Left x
     tpChilds (Right x) = Right $ map (tpath' f) x
@@ -65,7 +67,7 @@ total
 tpath : (Path->Path) -> List Html -> List Html
 tpath f =  map (tpath' f)
 
-abstract
+export
 data View : Type -> Type where
   MkView : List Html -> (Event -> Maybe a) -> View a
 
@@ -87,7 +89,7 @@ Monoid (View a) where
       []
       (\_ => Nothing)
 
-public
+export
 record App a b where
   constructor MkApp
   state : b
@@ -143,7 +145,6 @@ classesString x = concat $ intersperse " " $ class_ x
 addAttrs : Ptr -> Attributes -> JSIO ()
 addAttrs node attrs =
   do
-    setValue node $ value attrs
     setClass node $ classesString attrs
     setSelected node $ selected attrs
 
@@ -153,7 +154,6 @@ sortByKey l = sortBy (\(k1,_), (k2,_) => compare k1 k2 ) l
 updateAttrs : Ptr -> Attributes -> Attributes -> JSIO ()
 updateAttrs node attrsOld attrsNew =
   do
-    updateAttr value (setValue node) attrsOld attrsNew
     updateAttr classesString (setClass node) attrsOld attrsNew
     updateAttr selected (setSelected node) attrsOld attrsNew
   where
@@ -175,12 +175,12 @@ mutual
      addChilds procEvt node r
 
   htmltree2js : (Event -> JSIO ()) -> Html -> JSIO Ptr
-  htmltree2js procEvt (HtmlElement tag attrs events childs) =
+  htmltree2js procEvt htm =
     do
-      node <- createElement tag
-      addChildsAux node childs
-      addAttrs node attrs
-      addEventListeners procEvt node events
+      node <- createElement (tag htm)
+      addChildsAux node (content htm)
+      addAttrs node (attrs htm)
+      addEventListeners procEvt node (eventListeners htm)
       return node
     where
       addChildsAux : Ptr -> Either String (List Html) -> JSIO ()
@@ -214,14 +214,17 @@ mutual
 
 
   diffUpdateTree : (Event -> JSIO ()) -> Ptr -> Html -> Html -> JSIO ()
-  diffUpdateTree procEvt node (HtmlElement oldtag oldAttrs oldEventListeners oldChilds)
-                      new@(HtmlElement newtag newAttrs newEventListeners newChilds) =
-     if oldtag == newtag && oldEventListeners == newEventListeners then
+  diffUpdateTree procEvt node htmOld htmNew =
+    do
+     if tag htmOld == tag htmNew && eventListeners htmOld == eventListeners htmNew then
       do
-        updateAttrs node oldAttrs newAttrs
-        diffUpdateChildsAux oldChilds newChilds
-      else refreshNode procEvt node new
-     where
+        updateAttrs node (attrs htmOld) (attrs htmNew)
+        diffUpdateChildsAux (content htmOld) (content htmNew)
+      else refreshNode procEvt node htmNew
+     case newVal htmNew of
+        Nothing => pure ()
+        Just v => setValue node v
+    where
       diffUpdateChildsAux : Either String (List Html) -> Either String (List Html) -> JSIO ()
       diffUpdateChildsAux (Left x) (Left y) =
         if x == y then pure () else setTextContent node y
@@ -256,7 +259,7 @@ mutual
         Nothing => pure ()
         Just v => makeProcVal rootName ctx a b v
 
-public
+export
 runApp : App a b -> JSIO ()
 runApp {a} {b} app =
   do
@@ -267,11 +270,6 @@ runApp {a} {b} app =
     appendChild bo root
     let appSt = createAppState app
     ctx <- jscall "{}" (() -> JSIO Ptr) ()
-    --let newView = stepInput (state app) (view app)
-    --let newApp = record {view = newView} app
-    --setApp newApp
-    --let h = render $ view newApp
-    --setLastTree []
     updateView rootName (makeProcEvt rootName ctx a b) [] (theTree appSt)
     setAppState ctx appSt
 
@@ -280,23 +278,23 @@ runApp {a} {b} app =
 
 ----- primitives
 
-public
+export
 button : a -> String -> View a
 button val lbl =
   MkView
     [htmlElement "button" [("click", TargetValue Here)] [htmlText lbl]]
     (\_ => Just val)
 
-public
+export
 text : String -> View a
 text s =
   MkView
     [htmlText s]
     (\_=> Nothing)
 
-public
-textinput : View String
-textinput =
+export
+textinput : Maybe String -> View String
+textinput v =
   MkView
-    [ htmlElement "input"  [("change", TargetValue Here)] [] ]
+    [ MkHtml "input" emptyAttrs [("change", TargetValue Here)] (Right []) v ]
     (\(_, x) => Just x)

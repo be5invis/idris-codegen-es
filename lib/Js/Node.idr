@@ -8,14 +8,14 @@ import Data.SortedMap
 require : String -> JSIO Ptr
 require s = jscall "require(%0)" (String -> JSIO Ptr) s
 
-public
+export
 readFileSync : String -> JSIO String
 readFileSync file =
   do
     fs <- require "fs"
     jscall "%0.readFileSync(%1)" (Ptr -> String -> JSIO String) fs file
 
-abstract
+export
 data Request = MkRequest Ptr
 
 end : String -> Request -> JSIO ()
@@ -39,7 +39,7 @@ error 400 (MkRequest p) =
     jscall "%0[1].writeHead(400,{'Content-Type': 'text/plain'})" (Ptr->JSIO ()) p
     jscall "%0[1].end(%1)" (Ptr -> String -> JSIO ()) p "400 Bad Request"
 
-public
+export
 data HttpHandler = HandleGet String (JSIO String)
                  | HandlePost String (String -> ASync String)
 
@@ -61,7 +61,7 @@ makeRawServ (MkService s _ _ (dec, _, _, enc)) f =
           Right z =>
             map enc $ f z
 
-public
+export
 MakeServicesTy : List Service -> Type
 MakeServicesTy [] = List HttpHandler
 MakeServicesTy (x::xs) = serviceTy x -> MakeServicesTy xs
@@ -70,7 +70,7 @@ makeServices' : (ls : List Service) -> List HttpHandler -> MakeServicesTy ls
 makeServices' [] acc = acc
 makeServices' (x::xs) acc = \next => makeServices' xs (makeRawServ x next :: acc )
 
-public
+export
 makeServices : (s : List Service) -> MakeServicesTy s
 makeServices x = makeServices' x []
 
@@ -109,7 +109,7 @@ procReqRaw handlers r@(MkRequest p) = do
           p
           (procInput r x)
 
-public
+export
 runServer : Int -> List HttpHandler -> JSIO ()
 runServer port services =
   do
@@ -151,6 +151,6 @@ httpRequest host port path method body =
         (String -> Int -> String -> String -> JSIO Ptr)
         host port path method
 
-public
+export
 httpGet : String -> Int -> String -> ASync String
 httpGet host port path = httpRequest host port path "GET" Nothing

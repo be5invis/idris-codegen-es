@@ -5,7 +5,20 @@ import Debug.Trace
 import Js.BrowserBase
 import public Js.BrowserUtils
 import Data.Vect
+
+public export
+TyError : Type
+TyError = List String
+
+export
+data Form : Type -> Type where
+  MkForm : (Maybe a -> Form a) -> Form a
+
+--public
+--buildForm : Maybe a -> Form a -> View a
+
 {-
+
 public
 TyError : Type
 TyError = List String

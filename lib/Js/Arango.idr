@@ -33,7 +33,7 @@ install_service ctrl (name, f) =
             fsend_res x res
 
 
-public
+export
 install_services : List (String, String -> JSIO String) -> JSIO ()
 install_services x = do
   foxx <- require "org/arangodb/foxx"

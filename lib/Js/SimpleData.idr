@@ -4,34 +4,34 @@ import Data.HVect
 import Data.Vect
 import Js.IO
 
-public
+public export
 data Label : String -> Type -> Type where
   MkLabel : a -> Label s a
 
-public
+public export
 data SDataTy = SString | SList SDataTy | SObj (List (String, SDataTy))
 
-public
+public export
 SDataObj : Type
 SDataObj = List (String, SDataTy)
 
-public
+public export
 total
 iSDataTy : SDataTy -> Type
 iSDataTy SString = String
 iSDataTy (SList x) = List (iSDataTy x)
 iSDataTy (SObj x) = assert_total $ HVect $ fromList $ map (iSDataTy . snd) x
 
-public
+public export
 total
 iSDataObj : SDataObj -> Type
 iSDataObj x = iSDataTy $ SObj x
 
-public
+export
 encodeJS : (a:SDataTy) -> iSDataTy a -> JSIO Ptr
 encodeJS SString s = jscall "%0" (String -> JSIO Ptr) s
 
-public
+export
 decodeJS : (a:SDataTy) -> Ptr -> JSIO (Either String (iSDataTy a))
 decodeJS SString p =
   do

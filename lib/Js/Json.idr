@@ -7,7 +7,7 @@ import public Lightyear.Strings
 import public Data.SortedMap
 
 
-public
+export
 data JsonValue = JsonString String
                | JsonNumber Double
                | JsonBool Bool
@@ -131,20 +131,20 @@ mutual
 jsonToplevelValue : Parser JsonValue
 jsonToplevelValue = (map JsonArray jsonArray) <|> (map JsonObject jsonObject)
 
-public
+export
 parsJson : String -> Either String JsonValue
 parsJson s = parse jsonValue s
 
-public
+export
 interface ToJson a where
   toJson : a -> JsonValue
 
-public
+export
 interface FromJson a where
   fromJson : JsonValue -> Either String a
 
 
-public
+export
 interface (ToJson a, FromJson a) => BothJson a where
 
 (ToJson a, FromJson a) => BothJson a where
@@ -163,10 +163,10 @@ FromJson JsonValue where
 ToJson JsonValue where
   toJson = id
 
-public
+export
 decode : FromJson a => String -> Either String a
 decode x = parsJson x >>= fromJson
 
-public
+export
 encode : ToJson a => a -> String
 encode x = show $ toJson x
