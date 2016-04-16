@@ -1,7 +1,6 @@
 module Js.BrowserUtils
 
 import Js.BrowserBase
-import Js.IO
 
 export
 textinput' : View String

@@ -1,6 +1,5 @@
 module Js.BrowserNetwork
 
-import Js.IO
 import Js.BrowserForeigns
 import public Js.ServiceTypes
 

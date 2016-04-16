@@ -17,6 +17,6 @@ page = MkApp
           upd
 
 
-main : JSIO ()
+main : JS_IO ()
 main = do
   runApp page

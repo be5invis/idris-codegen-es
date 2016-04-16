@@ -1,9 +1,9 @@
 module Main
 
-import Js.IO
+import Js.ASync
 
-main : JSIO ()
+main : JS_IO ()
 main = do
   let f = the ((String,String) -> String -> (String, Maybe String ))  (\(_, s),y => (s, Just s))
   case snd $ f ("t", "tst") "cenas" of
-    Just z => jsdebug z
+    Just z => putStr' z

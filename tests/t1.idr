@@ -1,4 +1,3 @@
-import Js.IO
 
-main : JSIO ()
+main : JS_IO ()
 main = putStr' "ola"

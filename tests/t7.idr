@@ -1,6 +1,5 @@
 module Main
 
-import Js.IO
 
 mutual
   is_even : Int -> Int
@@ -11,6 +10,6 @@ mutual
   is_odd n =
       if n == 0 then 0 else is_even $ n-1
 
-main : JSIO ()
+main : JS_IO ()
 main = do
   putStr' $ show $ is_even 100001

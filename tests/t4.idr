@@ -1,20 +1,21 @@
-import Js.IO
+import Js.ASync
 
-p : Int -> JSIO Int
+p : Int -> JS_IO Int
 p x = do
   putStr' "ola"
   pure $ x + 1
 
 
-call_fn : (Int -> JSIO Int) -> Int -> JSIO Int
+call_fn : (Int -> JS_IO Int) -> Int -> JS_IO Int
 call_fn f x =
   jscall
     "%0(%1)"
-    ((Int -> JSIO Int) -> Int -> JSIO Int)
-    f x
+    ((JsFn (Int -> JS_IO Int)) -> Int -> JS_IO Int)
+    (MkJsFn f)
+    x
 
 
-main : JSIO ()
+main : JS_IO ()
 main = do
   v <- call_fn p 73
   putStrLn' $ show v

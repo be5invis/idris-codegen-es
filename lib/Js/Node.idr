@@ -1,46 +1,46 @@
 module Js.Node
 
-import public Js.IO
+import public Js.ASync
 import public Js.ServiceTypes
 import Data.SortedMap
 
 
-require : String -> JSIO Ptr
-require s = jscall "require(%0)" (String -> JSIO Ptr) s
+require : String -> JS_IO Ptr
+require s = jscall "require(%0)" (String -> JS_IO Ptr) s
 
 export
-readFileSync : String -> JSIO String
+readFileSync : String -> JS_IO String
 readFileSync file =
   do
     fs <- require "fs"
-    jscall "%0.readFileSync(%1)" (Ptr -> String -> JSIO String) fs file
+    jscall "%0.readFileSync(%1)" (Ptr -> String -> JS_IO String) fs file
 
 export
 data Request = MkRequest Ptr
 
-end : String -> Request -> JSIO ()
+end : String -> Request -> JS_IO ()
 end s (MkRequest p) =
   do
-    jscall "%0[1].end(%1)" (Ptr -> String -> JSIO ()) p s
+    jscall "%0[1].end(%1)" (Ptr -> String -> JS_IO ()) p s
 
-url : Request -> JSIO String
-url (MkRequest p) = jscall "%0[0].url" (Ptr -> JSIO String) p
+url : Request -> JS_IO String
+url (MkRequest p) = jscall "%0[0].url" (Ptr -> JS_IO String) p
 
-method : Request -> JSIO String
-method (MkRequest r) = jscall "%0[0].method" (Ptr -> JSIO String) r
+method : Request -> JS_IO String
+method (MkRequest r) = jscall "%0[0].method" (Ptr -> JS_IO String) r
 
-error : Int -> Request -> JSIO ()
+error : Int -> Request -> JS_IO ()
 error 404 (MkRequest p) =
   do
-    jscall "%0[1].writeHead(404,{'Content-Type': 'text/plain'})" (Ptr->JSIO ()) p
-    jscall "%0[1].end(%1)" (Ptr -> String -> JSIO ()) p "404 Not Found"
+    jscall "%0[1].writeHead(404,{'Content-Type': 'text/plain'})" (Ptr->JS_IO ()) p
+    jscall "%0[1].end(%1)" (Ptr -> String -> JS_IO ()) p "404 Not Found"
 error 400 (MkRequest p) =
   do
-    jscall "%0[1].writeHead(400,{'Content-Type': 'text/plain'})" (Ptr->JSIO ()) p
-    jscall "%0[1].end(%1)" (Ptr -> String -> JSIO ()) p "400 Bad Request"
+    jscall "%0[1].writeHead(400,{'Content-Type': 'text/plain'})" (Ptr->JS_IO ()) p
+    jscall "%0[1].end(%1)" (Ptr -> String -> JS_IO ()) p "400 Bad Request"
 
 export
-data HttpHandler = HandleGet String (JSIO String)
+data HttpHandler = HandleGet String (JS_IO String)
                  | HandlePost String (String -> ASync String)
 
 handlerSelector : HttpHandler -> String
@@ -55,8 +55,8 @@ makeRawServ (MkService s _ _ (dec, _, _, enc)) f =
   HandlePost s $ \x =>
         case dec x of
         --  Left z => do
-        --    liftJSIO $ putStr' x
-        --    liftJSIO $ putStr' z
+        --    liftJS_IO $ putStr' x
+        --    liftJS_IO $ putStr' z
         --    pure $ Left 400
           Right z =>
             map enc $ f z
@@ -74,7 +74,7 @@ export
 makeServices : (s : List Service) -> MakeServicesTy s
 makeServices x = makeServices' x []
 
-procInput : Request -> (String -> ASync String) -> String -> JSIO ()
+procInput : Request -> (String -> ASync String) -> String -> JS_IO ()
 procInput (MkRequest p) f body =
   do
     let async = f body
@@ -82,11 +82,11 @@ procInput (MkRequest p) f body =
   where
     procRes s =
       do
-        jscall "%0[1].writeHead(200,{'Content-Type': 'text/plain'})" (Ptr -> JSIO ()) p
-        jscall "%0[1].end(%1)" (Ptr -> String -> JSIO ()) p s
+        jscall "%0[1].writeHead(200,{'Content-Type': 'text/plain'})" (Ptr -> JS_IO ()) p
+        jscall "%0[1].end(%1)" (Ptr -> String -> JS_IO ()) p s
 
 
-procReqRaw : SortedMap String HttpHandler -> Request -> JSIO ()
+procReqRaw : SortedMap String HttpHandler -> Request -> JS_IO ()
 procReqRaw handlers r@(MkRequest p) = do
   u <- url r
   m <- method r
@@ -105,21 +105,21 @@ procReqRaw handlers r@(MkRequest p) = do
            "req[0].on('data', function(data){body+=data} );" ++
            "req[0].on('end', function(){%1(body)} );" ++
            "})(%0)")
-          (Ptr -> (String -> JSIO ()) -> JSIO())
+          (Ptr -> (JsFn (String -> JS_IO ())) -> JS_IO())
           p
-          (procInput r x)
+          (MkJsFn $ procInput r x)
 
 export
-runServer : Int -> List HttpHandler -> JSIO ()
+runServer : Int -> List HttpHandler -> JS_IO ()
 runServer port services =
   do
     http <- require "http"
     server <- jscall
                   "%0.createServer(function(req, res){return %1([req,res])})"
-                  (Ptr -> (Ptr -> JSIO ()) -> JSIO Ptr )
+                  (Ptr -> (JsFn (Ptr -> JS_IO ())) -> JS_IO Ptr )
                   http
-                  (\x => procReqRaw servMap (MkRequest x))
-    jscall "%1.listen(%0, function(){console.log('Server listening on: http://localhost:%s', %0)})" (Int -> Ptr -> JSIO ()) port server
+                  (MkJsFn $ \x => procReqRaw servMap (MkRequest x))
+    jscall "%1.listen(%0, function(){console.log('Server listening on: http://localhost:%s', %0)})" (Int -> Ptr -> JS_IO ()) port server
   where
     servMap : SortedMap String (HttpHandler)
     servMap = fromList $ zip (map handlerSelector services) services
@@ -136,19 +136,19 @@ httpRequest host port path method body =
                        "  res.on('data', function(data){body+=data});" ++
                        "  res.on('end', function(){console.log(body);%2(body)})" ++
                        "})")
-                       (Ptr -> Ptr -> (String -> JSIO ()) -> JSIO Ptr)
+                       (Ptr -> Ptr -> (JsFn (String -> JS_IO ())) -> JS_IO Ptr)
                        http
                        options
-                       g
+                       (MkJsFn g)
                     case body of
                       Nothing => pure ()
-                      Just z => jscall "%0.write(%1)" (Ptr -> String -> JSIO ()) req z
-                    jscall "%0.end()" (Ptr -> JSIO ()) req
+                      Just z => jscall "%0.write(%1)" (Ptr -> String -> JS_IO ()) req z
+                    jscall "%0.end()" (Ptr -> JS_IO ()) req
   where
     getOpts =
       jscall
         "{hostname:%0, port: %1, path: %2, method: %3}"
-        (String -> Int -> String -> String -> JSIO Ptr)
+        (String -> Int -> String -> String -> JS_IO Ptr)
         host port path method
 
 export

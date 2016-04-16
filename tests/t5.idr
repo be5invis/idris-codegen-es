@@ -1,4 +1,4 @@
-import Js.IO
+import Js.ASync
 
 
 tst : String
@@ -7,6 +7,6 @@ tst =
       (y,z) = x
   in y
 
-main : JSIO ()
+main : JS_IO ()
 main = do
   putStr' $ show tst

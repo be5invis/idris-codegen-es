@@ -1,34 +1,34 @@
-import Js.IO
+import Js.ASync
 
 data ServiceM : Type -> Type where
   PureServ : a -> ServiceM a
 
 
-get_jsio : ServiceM a -> JSIO (Either String a)
+get_jsio : ServiceM a -> JS_IO (Either String a)
 get_jsio (PureServ x) = do
   pure $ Right x
 
-public
+
 mytst : String -> ServiceM String
 mytst x = PureServ $ "ola "
 
-call_fn : (String -> JSIO String) -> String -> JSIO String
+call_fn : (String -> JS_IO String) -> String -> JS_IO String
 call_fn f x = jscall
                   "%0(%1)"
-                  ((String -> JSIO String) -> String -> JSIO String)
-                  f x
+                  ((JsFn (String -> JS_IO String)) -> String -> JS_IO String)
+                  (MkJsFn f)
+                  x
 
-mytstJs : String -> JSIO String
+mytstJs : String -> JS_IO String
 mytstJs x = do
   r <- get_jsio $ mytst "arst"
   case r of
       Right k => pure k
 
-tst2 : JSIO String
+tst2 : JS_IO String
 tst2 = call_fn mytstJs "inputmytst"
 
-public
-main : JSIO ()
+main : JS_IO ()
 main = do
   putStrLn' "start"
   r <- tst2

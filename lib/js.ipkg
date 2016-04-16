@@ -2,7 +2,7 @@ package js
 
 pkgs = contrib, lightyear
 
-modules = Js.IO
+modules = Js.ASync
         , Js.Browser
         , Js.BrowserForeigns
         , Js.BrowserBase

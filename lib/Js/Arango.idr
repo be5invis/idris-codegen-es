@@ -1,28 +1,28 @@
 module Js.Arango
-import Js.IO
+import Js.ASync
 
-require : String -> JSIO Ptr
-require s = jscall "require(%0)" (String -> JSIO Ptr) s
+require : String -> JS_IO Ptr
+require s = jscall "require(%0)" (String -> JS_IO Ptr) s
 
-mkController : Ptr -> JSIO Ptr
-mkController fox = jscall  "new %0.Controller(applicationContext)" (Ptr -> JSIO Ptr) fox
+mkController : Ptr -> JS_IO Ptr
+mkController fox = jscall  "new %0.Controller(applicationContext)" (Ptr -> JS_IO Ptr) fox
 
-finstall_service : Ptr -> String -> (Ptr -> JSIO () ) -> JSIO ()
+finstall_service : Ptr -> String -> (Ptr -> JS_IO () ) -> JS_IO ()
 finstall_service ctrl name f =
   jscall
     "%0.post(%1, function(req,res){return %3([req,res])})"
-    (Ptr -> String -> (Ptr -> JSIO ()) -> JSIO () )
+    (Ptr -> String -> (JsFn (Ptr -> JS_IO ())) -> JS_IO () )
     ctrl
     name
-    f
+    (MkJsFn f)
 
-fget_serv_in : Ptr -> JSIO String
-fget_serv_in x = jscall "%0[0].rawBody()" (Ptr -> JSIO String) x
+fget_serv_in : Ptr -> JS_IO String
+fget_serv_in x = jscall "%0[0].rawBody()" (Ptr -> JS_IO String) x
 
-fsend_res : Ptr -> String -> JSIO ()
-fsend_res x val = jscall "%0[1].send(%1)" (Ptr -> String -> JSIO ()) x val
+fsend_res : Ptr -> String -> JS_IO ()
+fsend_res x val = jscall "%0[1].send(%1)" (Ptr -> String -> JS_IO ()) x val
 
-install_service : Ptr -> (String, String -> JSIO String) -> JSIO ()
+install_service : Ptr -> (String, String -> JS_IO String) -> JS_IO ()
 install_service ctrl (name, f) =
   do
     finstall_service ctrl name nf
@@ -34,7 +34,7 @@ install_service ctrl (name, f) =
 
 
 export
-install_services : List (String, String -> JSIO String) -> JSIO ()
+install_services : List (String, String -> JS_IO String) -> JS_IO ()
 install_services x = do
   foxx <- require "org/arangodb/foxx"
   ctrl <- mkController foxx

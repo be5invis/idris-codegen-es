@@ -2,7 +2,7 @@ module SimpleData
 
 import Data.HVect
 import Data.Vect
-import Js.IO
+import Js.ASync
 
 public export
 data Label : String -> Type -> Type where
@@ -28,14 +28,14 @@ iSDataObj : SDataObj -> Type
 iSDataObj x = iSDataTy $ SObj x
 
 export
-encodeJS : (a:SDataTy) -> iSDataTy a -> JSIO Ptr
-encodeJS SString s = jscall "%0" (String -> JSIO Ptr) s
+encodeJS : (a:SDataTy) -> iSDataTy a -> JS_IO Ptr
+encodeJS SString s = jscall "%0" (String -> JS_IO Ptr) s
 
 export
-decodeJS : (a:SDataTy) -> Ptr -> JSIO (Either String (iSDataTy a))
+decodeJS : (a:SDataTy) -> Ptr -> JS_IO (Either String (iSDataTy a))
 decodeJS SString p =
   do
-    c <- jscall "(typeof %0 === 'string')+0" (Ptr -> JSIO Int) p
+    c <- jscall "(typeof %0 === 'string')+0" (Ptr -> JS_IO Int) p
     if c == 1 then
-      Right <$> jscall "%0" (Ptr -> JSIO String) p
+      Right <$> jscall "%0" (Ptr -> JS_IO String) p
       else pure $ Left "decodeVal: Not a String"

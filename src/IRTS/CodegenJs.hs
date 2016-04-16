@@ -84,10 +84,6 @@ codegenJs ci = do
 trampoline = T.concat [ "var idris_trampoline = function(val){\n"
                       , "   var res = val;\n"
                       , "   while(res && res.call){\n"
---                      , "     var cargs=[];\n"
---                      , "     for(var k=0; k<res.args.length; ++k){\n"
---                      , "        cargs.push(idris_trampoline(res.args[k]));\n"
---                      , "     };\n"
                       , "     res = res.call.apply(this, res.args);\n"
                       , "   }\n"
                       , "   return res\n"
@@ -168,15 +164,18 @@ cgAlts _ _ [] = ([],Nothing)
 apply_name = jsName $ sMN 0 "APPLY"
 eval_name = jsName $ sMN 0 "EVAL"
 
+
 cgForeignArg :: (FDesc, JsAST) -> JsAST
-cgForeignArg (FCon (UN "JsInt"), v) = v
-cgForeignArg (FCon (UN "JsString"), v) = v
-cgForeignArg (FCon (UN "JsPtr"), v) = v
-cgForeignArg (FCon (UN "JsUnit"), v) = v
-cgForeignArg (FApp (UN "JsFun") [_, _, a, b], f) =
+cgForeignArg (FApp (UN "JS_IntT") _, v) = v
+cgForeignArg (FCon (UN "JS_Str"), v) = v
+cgForeignArg (FCon (UN "JS_Ptr"), v) = v
+cgForeignArg (FCon (UN "JS_Unit"), v) = v
+cgForeignArg (FApp (UN "JS_FnT") [_,FApp (UN "JS_Fn") [_,_, a, FApp (UN "JS_FnBase") [_,b]]], f) =
   JsAFun ["x"] $ cgForeignRes JsReturn b $ JsApp apply_name [f, cgForeignArg (a, JsVar "x")]
-cgForeignArg (FApp (UN "JsFunIO") [_, _, a, b], f) =
+cgForeignArg (FApp (UN "JS_FnT") [_,FApp (UN "JS_Fn") [_,_, a, FApp (UN "JS_FnIO") [_,_, b]]], f) =
   JsAFun ["x"] $ cgForeignRes JsReturn b $ evalJSIO $ JsApp apply_name [f, cgForeignArg (a, JsVar "x")]
+--cgForeignArg (FApp (UN "JsFunIO") [_, _, a, b], f) =
+--  JsAFun ["x"] $ cgForeignRes JsReturn b $ evalJSIO $ JsApp apply_name [f, cgForeignArg (a, JsVar "x")]
 cgForeignArg (desc, _) = error $ "Foreign arg type " ++ show desc ++ " not supported yet."
 
 evalJSIO :: JsAST -> JsAST
@@ -184,10 +183,11 @@ evalJSIO x =
   JsAppIfDef eval_name (JsApp apply_name [x, JsInt 0])
 
 cgForeignRes :: (JsAST -> JsAST) -> FDesc -> JsAST -> JsAST
-cgForeignRes ret (FCon (UN "JsInt")) x = ret x
-cgForeignRes ret (FCon (UN "JsUnit")) x = ret x
-cgForeignRes ret (FCon (UN "JsString")) x = ret x
-cgForeignRes ret (FCon (UN "JsPtr")) x = ret x
+cgForeignRes ret (FApp (UN "JS_IntT") _) x = ret x
+--cgForeignRes ret (FCon (UN "JsInt")) x = ret x
+cgForeignRes ret (FCon (UN "JS_Unit")) x = ret x
+cgForeignRes ret (FCon (UN "JS_Str")) x = ret x
+cgForeignRes ret (FCon (UN "JS_Ptr")) x = ret x
 cgForeignRes ret desc val =  error $ "Foreign return type " ++ show desc ++ " not supported yet."
 
 cgVar :: LVar -> JsAST

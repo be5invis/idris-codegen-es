@@ -1,7 +1,6 @@
 
 module Js.BrowserBase
 
-import Js.IO
 import Js.BrowserForeigns
 
 
@@ -77,12 +76,14 @@ getOfTwo g1 _ (PathFst x, v) = g1 (x,v)
 getOfTwo _ g2 (PathSnd x, v) = g2 (x,v)
 getOfTwo _ _ (Here,_) = Nothing
 
+export
 Semigroup (View a) where
   (MkView h1 g1) <+> (MkView h2 g2) =
       MkView
         (tpath PathFst h1 ++ tpath PathSnd h2)
         (getOfTwo g1 g2)
 
+export
 Monoid (View a) where
   neutral =
     MkView
@@ -115,23 +116,23 @@ stepAppState apSt x =
   in (record{theApp->state = newS, theTree = tree, getEvt = f} apSt, async)
 
 
-setAppState : Ptr -> AppState a b -> JSIO ()
-setAppState ctx z = jscall "%0.app = %1" (Ptr -> Ptr -> JSIO ()) ctx (believe_me z)
+setAppState : Ptr -> AppState a b -> JS_IO ()
+setAppState ctx z = jscall "%0.app = %1" (Ptr -> Ptr -> JS_IO ()) ctx (believe_me z)
 
-getAppState : Ptr -> JSIO (AppState a b)
-getAppState ctx = believe_me <$> jscall "%0.app" ( Ptr -> JSIO Ptr) ctx
+getAppState : Ptr -> JS_IO (AppState a b)
+getAppState ctx = believe_me <$> jscall "%0.app" ( Ptr -> JS_IO Ptr) ctx
 
-eventDef2JS : (Event -> JSIO ()) -> EventDef -> Ptr -> JSIO ()
+eventDef2JS : (Event -> JS_IO ()) -> EventDef -> Ptr -> JS_IO ()
 eventDef2JS procEvt (TargetValue p) evt =
   do
-    val <- jscall "%0.target.value" (Ptr-> JSIO String) evt
+    val <- jscall "%0.target.value" (Ptr-> JS_IO String) evt
     procEvt (p, val)
 eventDef2JS procEvt (FormSubmit p) evt =
   do
-    jscall "%0.preventDefault()" (Ptr -> JSIO ()) evt
+    jscall "%0.preventDefault()" (Ptr -> JS_IO ()) evt
     procEvt (p, "submit")
 
-addEventListeners : (Event -> JSIO ()) -> Ptr -> List (String, EventDef) -> JSIO ()
+addEventListeners : (Event -> JS_IO ()) -> Ptr -> List (String, EventDef) -> JS_IO ()
 addEventListeners procEvt node [] =
   pure ()
 addEventListeners procEvt node ((e,def)::xs) =
@@ -142,7 +143,7 @@ addEventListeners procEvt node ((e,def)::xs) =
 classesString : Attributes -> String
 classesString x = concat $ intersperse " " $ class_ x
 
-addAttrs : Ptr -> Attributes -> JSIO ()
+addAttrs : Ptr -> Attributes -> JS_IO ()
 addAttrs node attrs =
   do
     setClass node $ classesString attrs
@@ -151,13 +152,13 @@ addAttrs node attrs =
 sortByKey : Ord a => List (a, b) -> List (a, b)
 sortByKey l = sortBy (\(k1,_), (k2,_) => compare k1 k2 ) l
 
-updateAttrs : Ptr -> Attributes -> Attributes -> JSIO ()
+updateAttrs : Ptr -> Attributes -> Attributes -> JS_IO ()
 updateAttrs node attrsOld attrsNew =
   do
     updateAttr classesString (setClass node) attrsOld attrsNew
     updateAttr selected (setSelected node) attrsOld attrsNew
   where
-    updateAttr : Eq a => (Attributes -> a) -> (a->JSIO ()) -> Attributes -> Attributes -> JSIO ()
+    updateAttr : Eq a => (Attributes -> a) -> (a->JS_IO ()) -> Attributes -> Attributes -> JS_IO ()
     updateAttr proj set attrs1 attrs2 =
       if proj attrs1 == proj attrs2 then pure ()
         else set $ proj attrs2
@@ -165,7 +166,7 @@ updateAttrs node attrsOld attrsNew =
 
 mutual
 
-  addChilds : (Event -> JSIO ()) -> Ptr -> List Html -> JSIO ()
+  addChilds : (Event -> JS_IO ()) -> Ptr -> List Html -> JS_IO ()
   addChilds procEvt node [] =
     pure ()
   addChilds procEvt node (t::r) =
@@ -174,7 +175,7 @@ mutual
      appendChild node c
      addChilds procEvt node r
 
-  htmltree2js : (Event -> JSIO ()) -> Html -> JSIO Ptr
+  htmltree2js : (Event -> JS_IO ()) -> Html -> JS_IO Ptr
   htmltree2js procEvt htm =
     do
       node <- createElement (tag htm)
@@ -183,12 +184,12 @@ mutual
       addEventListeners procEvt node (eventListeners htm)
       return node
     where
-      addChildsAux : Ptr -> Either String (List Html) -> JSIO ()
+      addChildsAux : Ptr -> Either String (List Html) -> JS_IO ()
       addChildsAux node (Left x) = setTextContent node x
       addChildsAux  node (Right c) = addChilds procEvt node c
 
 mutual
-  diffUpdateChilds : (Event -> JSIO ()) -> Ptr -> Int -> List Html -> List Html -> JSIO ()
+  diffUpdateChilds : (Event -> JS_IO ()) -> Ptr -> Int -> List Html -> List Html -> JS_IO ()
   diffUpdateChilds procEvt node pos [] [] = pure ()
   diffUpdateChilds procEvt node pos (ot::or) [] =
     do
@@ -205,7 +206,7 @@ mutual
       appendChild node newChild
       diffUpdateChilds procEvt node pos [] nr
 
-  refreshNode : (Event -> JSIO ()) -> Ptr -> Html -> JSIO ()
+  refreshNode : (Event -> JS_IO ()) -> Ptr -> Html -> JS_IO ()
   refreshNode procEvt node newNode =
     do
       new <- htmltree2js procEvt newNode
@@ -213,7 +214,7 @@ mutual
       replaceChild p new node
 
 
-  diffUpdateTree : (Event -> JSIO ()) -> Ptr -> Html -> Html -> JSIO ()
+  diffUpdateTree : (Event -> JS_IO ()) -> Ptr -> Html -> Html -> JS_IO ()
   diffUpdateTree procEvt node htmOld htmNew =
     do
      if tag htmOld == tag htmNew && eventListeners htmOld == eventListeners htmNew then
@@ -225,7 +226,7 @@ mutual
         Nothing => pure ()
         Just v => setValue node v
     where
-      diffUpdateChildsAux : Either String (List Html) -> Either String (List Html) -> JSIO ()
+      diffUpdateChildsAux : Either String (List Html) -> Either String (List Html) -> JS_IO ()
       diffUpdateChildsAux (Left x) (Left y) =
         if x == y then pure () else setTextContent node y
       diffUpdateChildsAux _ (Left x) =
@@ -235,14 +236,14 @@ mutual
       diffUpdateChildsAux (Left _) (Right x)=
         addChilds procEvt node x
 
-  updateView : String -> (Event -> JSIO ()) -> List Html -> List Html -> JSIO ()
+  updateView : String -> (Event -> JS_IO ()) -> List Html -> List Html -> JS_IO ()
   updateView root procEvt lastTree newtree =
     do
       node <- getElementById root
       diffUpdateChilds procEvt node 0 lastTree newtree
 
 mutual
-  makeProcVal : String -> Ptr -> (a: Type) -> Type -> a -> JSIO ()
+  makeProcVal : String -> Ptr -> (a: Type) -> Type -> a -> JS_IO ()
   makeProcVal rootName ctx a b val =
     do
       appSt <- the (AppState a b) <$> getAppState ctx
@@ -251,7 +252,7 @@ mutual
       setAppState ctx newAppSt
       setASync (makeProcVal rootName ctx a b) async
 
-  makeProcEvt : String -> Ptr -> Type -> Type -> Event -> JSIO ()
+  makeProcEvt : String -> Ptr -> Type -> Type -> Event -> JS_IO ()
   makeProcEvt rootName ctx a b evt =
     do
       appSt <- the (AppState a b) <$> getAppState ctx
@@ -260,7 +261,7 @@ mutual
         Just v => makeProcVal rootName ctx a b v
 
 export
-runApp : App a b -> JSIO ()
+runApp : App a b -> JS_IO ()
 runApp {a} {b} app =
   do
     let rootName = "root"
@@ -269,7 +270,7 @@ runApp {a} {b} app =
     setAttribute root ("id",rootName)
     appendChild bo root
     let appSt = createAppState app
-    ctx <- jscall "{}" (() -> JSIO Ptr) ()
+    ctx <- jscall "{}" (() -> JS_IO Ptr) ()
     updateView rootName (makeProcEvt rootName ctx a b) [] (theTree appSt)
     setAppState ctx appSt
 

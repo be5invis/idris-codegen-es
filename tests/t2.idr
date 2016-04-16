@@ -1,14 +1,13 @@
-import Js.IO
+import Js.ASync
 
-
-ffn : Int -> JSIO Int
+ffn : Int -> JS_IO Int
 ffn x =
   jscall
     "(%0 + 1)"
-    (Int -> JSIO Int)
+    (Int -> JS_IO Int)
     x
 
-main : JSIO ()
+main : JS_IO ()
 main = do
   v <- ffn 1
   putStrLn' $ show v
