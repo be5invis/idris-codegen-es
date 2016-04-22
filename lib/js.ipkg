@@ -5,6 +5,7 @@ pkgs = contrib, lightyear
 modules = Js.ASync
         , Js.Browser
         , Js.BrowserForeigns
+        , Js.BrowserDom
         , Js.BrowserBase
         , Js.BrowserForms
         , Js.BrowserUtils
