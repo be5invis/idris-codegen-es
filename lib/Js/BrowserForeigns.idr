@@ -5,7 +5,14 @@ import public Js.ASync
 %access export
 
 lenChilds : Ptr -> JS_IO Int
-lenChilds node = jscall "%0.removeChild(%0.childNodes.length)" (Ptr -> JS_IO Int) node
+lenChilds node = jscall "%0.childNodes.length" (Ptr -> JS_IO Int) node
+
+clearContents : Ptr -> JS_IO ()
+clearContents x =
+  jscall
+  "function(z){while(z.lastChild){z.removeChild(z.lastChild);}}(%0)" 
+  (Ptr -> JS_IO ())
+  x
 
 removeChild : Ptr -> Int -> JS_IO ()
 removeChild node pos = jscall "%0.removeChild(%0.childNodes[%1] )" (Ptr -> Int -> JS_IO ()) node pos

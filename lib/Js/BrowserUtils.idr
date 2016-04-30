@@ -12,11 +12,12 @@ button val lbl =
     draw
     upd
     []
+    []
   where
     draw =
       do
         appendNode "button" root
-        pure []
+        pure ()
     upd _ _ = pure ((), Just val)
 
 export
@@ -24,16 +25,16 @@ text : String -> View a
 text s =
   mkView
     "text"
-    False
+    True
     ()
     draw
     (\_,_ => pure ((), Nothing))
+    []
     []
   where
     draw =
       do
         setText s root
-        pure []
 
 export
 textinput' : Maybe String -> View String
@@ -45,13 +46,12 @@ textinput' s =
     draw
     (\e, _ => pure (e, Just e))
     []
+    []
   where
     draw = do
       mi <- appendNode "input" root
       case mi of
         Just i => registEvent i "change" targetValue
-        Nothing => pure ()
-      pure []
 
 export
 textinput : View String

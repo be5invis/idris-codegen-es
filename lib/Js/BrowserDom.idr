@@ -35,12 +35,28 @@ Monad (Dom e) where
         g n p
 
 export
+appendNode' : String -> DomNode -> JS_IO DomNode
+appendNode' tag (MkDomNode n) = MkDomNode <$> appendChild n !(createElement tag)
+
+
+export
+child' : Nat -> DomNode -> JS_IO (Maybe DomNode)
+child' i (MkDomNode p) =
+  if !(lenChilds p) > (cast i) then (Just . MkDomNode) <$> childNode (cast i) p
+    else pure Nothing
+
+export
+solvePath : DomPath -> DomNode -> Maybe DomNode
+solvePath (MkDomPath f) x = f x
+
+export
+clear' : DomNode -> JS_IO ()
+clear' (MkDomNode x) = clearContents x
+
+export
 runDom : DomNode -> (e -> JS_IO ()) -> Dom e a -> JS_IO a
-runDom (MkDomNode container) procE (MkDom x) =
-  do
-    e <- createElement "span"
-    c <- appendChild container e
-    x (MkDomNode c) procE
+runDom container procE (MkDom x) =
+  x container procE
 
 
 export
@@ -52,8 +68,8 @@ body : JS_IO DomNode
 body = MkDomNode <$> docBody
 
 export
-consoleLog : String -> Dom e ()
-consoleLog s = MkDom $ \_, _=> putStr' s
+domLog : String -> Dom e ()
+domLog s = MkDom $ \_, _=> putStr' s
 
 export
 appendNode : String -> DomPath -> Dom e (Maybe DomPath)
