@@ -3,6 +3,7 @@ module Js.BrowserBase
 import Js.ASync
 import public Data.Vect
 import public Js.BrowserDom
+import public Js.SimpleData
 
 Path : Type
 Path = List Nat
@@ -10,14 +11,29 @@ Path = List Nat
 ViewEvent : Type
 ViewEvent = (Path, String)
 
+ViewNodeTag : Type
+ViewNodeTag = (Nat, String, SDataTy)
+
+total
+viewStateType : ViewNodeTag -> Type
+viewStateType (_, _ , st) = iSDataTy st
+
 mutual
-  data ViewNode : Type -> Type where
-    MkViewNode : String -> Bool -> b -> (Dom String ()) ->
-                    (String -> b -> Dom String (b, Maybe a)) ->
-                      (Vect n (View a)) -> (Vect n DomPath) -> ViewNode a
+
+  record ViewNode (t:ViewNodeTag) a where
+    constructor MkViewNode
+    state : viewStateType t
+    init : Dom String ()
+    update : viewStateType t -> Dom String (viewStateType t)
+    updateEvent : String -> viewStateType t -> Dom String (viewStateType t, Maybe a)
+    childs : Vect (fst t) (View a)
+    childsPaths : Vect (fst t) DomPath
+
+  ViewNodeSigma : Type -> Type
+  ViewNodeSigma a = (t:ViewNodeTag ** ViewNode t a)
 
   export
-  data View a = MkView (List (ViewNode a))
+  data View a = MkView (List (ViewNodeSigma a))
 
 
 export
@@ -29,13 +45,12 @@ Monoid (View a) where
   neutral = MkView []
 
 
-export
+public export
 record App a b where
   constructor MkApp
   state : b
   render : b -> View a
   update : a -> b -> (b, ASync a)
-
 
 record AppState a b where
   constructor MkAppState
@@ -51,22 +66,31 @@ setAppState (MkCtx ctx) z = jscall "%0.app = %1" (Ptr -> Ptr -> JS_IO ()) ctx (b
 getAppState : Ctx a b -> JS_IO (AppState a b)
 getAppState (MkCtx ctx) = believe_me <$> jscall "%0.app" ( Ptr -> JS_IO Ptr) ctx
 
-data NodeMatch a = Match Nat (ViewNode a, ViewNode a)
-                 | NewNode (ViewNode a)
+data NodeMatch a = MatchNode Nat (t:ViewNodeTag ** (ViewNode t a, ViewNode t a))
+                 | ReplaceNode Nat (ViewNodeSigma a )
+                 | NewNode (ViewNodeSigma a)
                  | DeleteNode Nat
 
-matchNodes : Nat -> List (ViewNode a) -> List (ViewNode a) -> List (NodeMatch a)
-matchNodes pos (x::xs) (y::ys) = Match pos (x, y) :: matchNodes (pos + 1) xs ys
-matchNodes pos [] (y::ys) = NewNode y :: matchNodes (pos + 1) [] ys
-matchNodes pos (x::xs) [] = DeleteNode pos :: matchNodes (pos + 1) xs []
-matchNodes pos [] [] = []
+
+matchNodes : Nat -> (t1: ViewNodeTag) -> (t2: ViewNodeTag) ->
+                Dec (t1 = t2) -> ViewNode t1 a -> ViewNode t2 a -> NodeMatch a
+matchNodes k t1 t1 (Yes Refl) y z = MatchNode k (t1 ** (y,z))
+matchNodes k t1 t2 (No contra) y z = ReplaceNode k (t2 ** z)
+
+
+matchNodesList : Nat -> List (ViewNodeSigma a) -> List (ViewNodeSigma a) -> List (NodeMatch a)
+matchNodesList pos ((t1**x)::xs) ((t2**y)::ys) = (matchNodes pos t1 t2 (decEq t1 t2) x y) :: matchNodesList (pos + 1) xs ys
+matchNodesList pos [] (y::ys) = NewNode y :: matchNodesList (pos + 1) [] ys
+matchNodesList pos (x::xs) [] = DeleteNode pos :: matchNodesList (pos + 1) xs []
+matchNodesList pos [] [] = []
 
 mutual
-  updateViewNode : ViewEvent -> Path -> Ctx a b -> DomNode -> ViewNode a -> JS_IO (ViewNode a, Maybe a)
-  updateViewNode ([], e) p ctx container (MkViewNode tag override st ini upd childs pos) =
+  updateViewNode : ViewEvent -> Path -> Ctx a b -> DomNode -> ViewNodeSigma a -> JS_IO (ViewNodeSigma a, Maybe a)
+  updateViewNode ([], e) p ctx container (t**v) =
     do
-      (newst, ma) <- runDom container (updateApp ctx p) $ upd e st
-      pure (MkViewNode tag override newst ini upd childs pos, ma)
+      (newst, ma) <- runDom container (updateApp ctx p) $ (updateEvent v) e (state v)
+      let newV = MkViewNode newst (init v) (update v) (updateEvent v) (childs v) (childsPaths v)
+      pure ((t ** newV ), ma)
 
   updateView : ViewEvent -> Path -> Ctx a b -> DomNode -> View a -> JS_IO (View a, Maybe a)
   updateView (t::r, e) p ctx container (MkView l) =
@@ -82,77 +106,91 @@ mutual
         Nothing => pure (MkView l, Nothing)
 
 
-  diffUpdateViewNode : Ctx a b -> DomNode -> Path -> (ViewNode a, ViewNode a) -> JS_IO (ViewNode a)
-  diffUpdateViewNode {a} {b} ctx container path (MkViewNode {n=no} ot oo os oi ou oc op, MkViewNode {n} t o s i u c p) =
-    case exactLength no c of
-      Just nc =>
-        if ot == t && not o then
-          do
-            newChilds <- sequence $ map
-                            diffUpdateChild
-                            (the (Vect no (Fin no, DomPath, View a, View a)) $ range `zip` (op `zip` (oc `zip` nc)))
-            pure $ MkViewNode ot oo os oi ou newChilds op
-        else initNew
-      Nothing => initNew
-    where
-      diffUpdateChild : (Fin z, DomPath, View a, View a) -> JS_IO (View a)
-      diffUpdateChild (pos, dpath, vold, vnew) =
-        case solvePath dpath container of
-          Just ncont => diffUpdateView ctx ncont (path ++ [finToNat pos]) (vold, vnew)
+{-  diffUpdateViewNode {a} {b} ctx container path
       initNew : JS_IO (ViewNode a)
       initNew =
         do
           clear' container
           runDom container (updateApp ctx path) i
-          pure $ MkViewNode t o s i u c p
+          pure $ MkViewNode typ t o s i u c p
+-}
 
-
-    --case decEq (no, ot) (n, t) of
-    --  _ =>
+  diffUpdateEqNodes : Ctx a b -> DomNode -> Path -> ViewNode t a -> ViewNode t a -> JS_IO (ViewNode t a)
+  diffUpdateEqNodes ctx container path x y =
+    do
+      newChilds <- diffUpdateChilds (childsPaths x) (childs x) (childs y)
+      newSt <- runDom container (updateApp ctx path) $ (update y) (state x)
+      pure $ MkViewNode newSt (init x) (update x) (updateEvent x) newChilds (childsPaths x)
+    where
+      diffUpdateChild : (Fin z, DomPath, View a, View a) -> JS_IO (View a)
+      diffUpdateChild (pos, dpath, vold, vnew) =
+        case solvePath dpath container of
+          Just ncont => diffUpdateView ctx ncont (path ++ [finToNat pos]) (vold, vnew)
+      diffUpdateChilds : Vect k DomPath -> Vect k (View a) -> Vect k (View a) -> JS_IO (Vect k (View a))
+      diffUpdateChilds op oc nc =
+        sequence $ map
+            diffUpdateChild
+            (range `zip` (op `zip` (oc `zip` nc)))
 
   diffUpdateView : Ctx a b -> DomNode -> Path -> (View a, View a) -> JS_IO (View a)
   diffUpdateView ctx container path (MkView lo, MkView ln) =
-    MkView <$> (sequence $ map updateMatch $ reverse $ matchNodes 0 lo ln)
+    MkView <$> (sequence $ map updateMatch $ reverse $ matchNodesList 0 lo ln)
     where
-      updateMatch (Match pos m) =
+      updateMatch (MatchNode pos (t ** (v1,v2))) =
         do
           c <- child' pos container
           case c of
-            Just newContainer => diffUpdateViewNode ctx newContainer (path++[pos]) m
+            Just newContainer =>
+              do
+                vr <- diffUpdateEqNodes ctx newContainer (path++[pos]) v1 v2
+                pure (t ** vr)
 
+  updateAppVal : Ctx a b -> a -> JS_IO ()
+  updateAppVal ctx x =
+    do
+      appSt <- getAppState ctx
+      let app = theApp appSt
+      let (newS, async) = (update app) x (state app)
+      finalView <- diffUpdateView ctx (container appSt) [] (lastView appSt, (render app) newS)
+      setAppState ctx (record{lastView = finalView, theApp = record{state = newS} app} appSt)
+      setASync (updateAppVal ctx) async
 
   updateApp : Ctx a b -> Path -> String -> JS_IO ()
   updateApp ctx p e =
     do
       appSt <- getAppState ctx
       (view2, mVal) <- updateView (p,e) [] ctx (container appSt) (lastView appSt)
+      setAppState ctx (record{lastView=view2} appSt)
       case mVal of
-        Nothing => setAppState ctx (record{lastView=view2} appSt)
-        Just x => pure()
+        Nothing => pure ()
+        Just x => updateAppVal ctx x
 
-  initView : Path -> Ctx a b -> DomNode -> View a -> JS_IO ()
+
+  initView : Path -> Ctx a b -> DomNode -> View a -> JS_IO (View a)
   initView path ctx container (MkView v) =
     do
-      sequence $
-        map
-          (initViewNode ctx container)
-          (zip (map (\z=> path ++ [z]) $ [0..length v]) v)
-      pure ()
+      newV <- sequence $
+                  map
+                    (initViewNode ctx container)
+                    (zip (map (\z=> path ++ [z]) $ [0..length v]) v)
+      pure $ MkView newV
 
-  initViewNode : Ctx a b -> DomNode -> (Path, ViewNode a) -> JS_IO ()
-  initViewNode ctx container (path, MkViewNode _ _ _ ini _ _ _) =
+  initViewNode : Ctx a b -> DomNode -> (Path, ViewNodeSigma a) -> JS_IO (ViewNodeSigma a)
+  initViewNode ctx container (path, (t ** v) ) =
     do
       c <- appendNode' "span" container
-      runDom c (updateApp ctx path) ini
-      pure ()
+      runDom c (updateApp ctx path) (init v)
+      newSt <- runDom c (updateApp ctx path) $ (update v) (state v)
+      newChilds <- sequence $ map (initView path ctx container) (childs v)
+      pure $ (t ** MkViewNode newSt (init v) (update v) (updateEvent v) newChilds (childsPaths v))
 
 
 startApp : Ctx a b -> App a b -> DomNode -> JS_IO ()
 startApp ctx x container =
   do
     let v = render x $ state x
-    initView [] ctx container v
-    setAppState ctx $ MkAppState x v container
+    v2 <- initView [] ctx container v
+    setAppState ctx $ MkAppState x v2 container
 
 
 export
@@ -160,11 +198,23 @@ runApp : App a b -> JS_IO ()
 runApp {a} {b} app =
   do
     bo <- body
+    c <- appendNode' "span" bo
     ctx <- jscall "{}" (() -> JS_IO Ptr) ()
-    startApp (the (Ctx a b) $ MkCtx ctx) app bo
+    startApp (the (Ctx a b) $ MkCtx ctx) app c
 
 export
-mkView : String -> Bool -> b -> (Dom String ()) ->
-            (String -> b -> Dom String (b, Maybe a)) ->
-              Vect n (View a) -> Vect n DomPath -> View a
-mkView tag override state draw update childs slots = MkView [MkViewNode tag override state draw update childs slots]
+leafView : (s:String) -> (b:SDataTy) -> iSDataTy b ->
+              Dom String () -> (iSDataTy b -> Dom String (iSDataTy b)) ->
+                (String -> iSDataTy b -> Dom String (iSDataTy b, Maybe a)) -> View a
+leafView {a} s b st0 i u ue =
+
+  MkView [((Z, s, b) ** MkViewNode st0 i u ue [] [])]
+
+{-
+export
+statelessLeafView : (s:String) -> Dom String () -> View a
+statelessLeafView {a} s i =
+  MkView (the ViewNode (Z, s, SUnit) a $
+              MkViewNode st0 i (\_ -> pure ()) (\_, _ -> pure ()) [] []
+         )
+-}

@@ -85,7 +85,6 @@ export
 setText : String -> DomPath -> Dom e ()
 setText s (MkDomPath path) = MkDom $ \node, _ =>
     case path node of
-      Nothing => pure ()
       Just (MkDomNode n) => setTextContent n s
 
 export

@@ -10,7 +10,7 @@ lenChilds node = jscall "%0.childNodes.length" (Ptr -> JS_IO Int) node
 clearContents : Ptr -> JS_IO ()
 clearContents x =
   jscall
-  "function(z){while(z.lastChild){z.removeChild(z.lastChild);}}(%0)" 
+  "function(z){while(z.lastChild){z.removeChild(z.lastChild);}}(%0)"
   (Ptr -> JS_IO ())
   x
 
@@ -23,6 +23,7 @@ childNode pos node = jscall "%0.childNodes[%1]" (Ptr -> Int -> JS_IO Ptr) node p
 
 setTextContent : Ptr -> String -> JS_IO ()
 setTextContent node s = jscall "%0.textContent = %1" (Ptr -> String -> JS_IO ()) node s
+--setTextContent node s = jscall "console.log([%0,%1])" (Ptr -> String -> JS_IO ()) node s
 
 appendChild : Ptr -> Ptr -> JS_IO Ptr
 appendChild node child = jscall "%0.appendChild(%1)" (Ptr -> Ptr -> JS_IO Ptr) node child

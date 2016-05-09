@@ -5,53 +5,56 @@ import Js.BrowserBase
 export
 button : a -> String -> View a
 button val lbl =
-  mkView
+  leafView
     "button"
-    False
+    SUnit
     ()
     draw
-    upd
-    []
-    []
+    (\_ => pure ())
+    updEv
   where
     draw =
       do
         appendNode "button" root
         pure ()
-    upd _ _ = pure ((), Just val)
+    updEv _ _ = pure ((), Just val)
 
 export
 text : String -> View a
 text s =
-  mkView
+  leafView
     "text"
-    True
-    ()
-    draw
-    (\_,_ => pure ((), Nothing))
-    []
-    []
+    SString
+    ""
+    (pure ())
+    upd
+    (\_,x => pure (x, Nothing))
   where
-    draw =
-      do
-        setText s root
+    upd x =
+      if x == s then pure x
+        else
+          do
+            setText s root
+            pure s
 
 export
 textinput' : Maybe String -> View String
 textinput' s =
-  mkView
+  leafView
     "textinput"
-    False
-    (lowerMaybe s)
+    SUnit
+    ()
     draw
-    (\e, _ => pure (e, Just e))
-    []
-    []
+    upd
+    (\e, _ => pure ((), Just e))
   where
     draw = do
       mi <- appendNode "input" root
       case mi of
         Just i => registEvent i "change" targetValue
+    upd _ =
+      case s of
+        Nothing => pure ()
 
 export
 textinput : View String
