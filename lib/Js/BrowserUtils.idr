@@ -59,3 +59,32 @@ textinput' s =
 export
 textinput : View String
 textinput = textinput' Nothing
+
+export
+container : String -> View a -> View a
+container tag content =
+  mkView
+    ("container_"++ tag)
+    SUnit
+    ()
+    draw
+    (\_=> pure ())
+    (\_, _ => pure ((), Nothing))
+    [content]
+    [child 0 root]
+  where
+    draw =
+      do
+        appendNode tag root
+        pure ()
+
+export
+div : View a -> View a
+div x = container "div" x
+
+{-
+export
+pairView : View a -> View b -> View (a,b)
+pairView x y =
+  mkView
+-}    

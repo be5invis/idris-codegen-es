@@ -12,7 +12,7 @@ TyError = List String
 
 export
 data Form : Type -> Type where
-  MkForm : (Maybe a -> Form a) -> Form a
+  MkForm : (Maybe a -> View a) -> Form a
 
 --public
 --buildForm : Maybe a -> Form a -> View a

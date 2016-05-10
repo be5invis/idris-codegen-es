@@ -6,7 +6,7 @@ export
 data DomNode  = MkDomNode Ptr
 
 export
-data DomPath = MkDomPath (DomNode -> Maybe DomNode)
+data DomPath = MkDomPath (DomNode -> JS_IO (Maybe DomNode) )
 
 export
 data DomEvent a = MkDomEvent (Ptr -> JS_IO a)
@@ -46,7 +46,11 @@ child' i (MkDomNode p) =
     else pure Nothing
 
 export
-solvePath : DomPath -> DomNode -> Maybe DomNode
+lengthChilds' : DomNode -> JS_IO Int
+lengthChilds' (MkDomNode p) = lenChilds p
+
+export
+solvePath : DomPath -> DomNode -> JS_IO(Maybe DomNode)
 solvePath (MkDomPath f) x = f x
 
 export
@@ -61,7 +65,16 @@ runDom container procE (MkDom x) =
 
 export
 root : DomPath
-root = MkDomPath (\x => Just x)
+root = MkDomPath (\x => pure $ Just x)
+
+export
+child : Nat -> DomPath -> DomPath
+child pos path = MkDomPath $ \x =>
+  do
+    base <- solvePath path x
+    case base of
+      Nothing => pure Nothing
+      Just x => child' pos x
 
 export
 body : JS_IO DomNode
@@ -74,23 +87,23 @@ domLog s = MkDom $ \_, _=> putStr' s
 export
 appendNode : String -> DomPath -> Dom e (Maybe DomPath)
 appendNode tag (MkDomPath path) = MkDom $ \node, _ =>
-    case path node of
+    case !(path node) of
       Nothing => pure Nothing
       Just (MkDomNode n) =>
         do
           p <- appendChild n !(createElement tag)
-          pure $ Just $ MkDomPath (\_ => Just $ MkDomNode p)
+          pure $ Just $ MkDomPath (\_ => pure $ Just $ MkDomNode p)
 
 export
 setText : String -> DomPath -> Dom e ()
 setText s (MkDomPath path) = MkDom $ \node, _ =>
-    case path node of
+    case !(path node) of
       Just (MkDomNode n) => setTextContent n s
 
 export
 registEvent : DomPath -> String -> DomEvent e -> Dom e ()
 registEvent (MkDomPath path) eventType (MkDomEvent getDomE) = MkDom $ \node, proc =>
-  case path node of
+  case !(path node) of
     Nothing => pure ()
     Just (MkDomNode n) => addEventListener n eventType (\x => getDomE x >>= proc  )
 

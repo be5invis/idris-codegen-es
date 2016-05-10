@@ -124,7 +124,7 @@ mutual
     where
       diffUpdateChild : (Fin z, DomPath, View a, View a) -> JS_IO (View a)
       diffUpdateChild (pos, dpath, vold, vnew) =
-        case solvePath dpath container of
+        case !(solvePath dpath container) of
           Just ncont => diffUpdateView ctx ncont (path ++ [finToNat pos]) (vold, vnew)
       diffUpdateChilds : Vect k DomPath -> Vect k (View a) -> Vect k (View a) -> JS_IO (Vect k (View a))
       diffUpdateChilds op oc nc =
@@ -207,14 +207,13 @@ leafView : (s:String) -> (b:SDataTy) -> iSDataTy b ->
               Dom String () -> (iSDataTy b -> Dom String (iSDataTy b)) ->
                 (String -> iSDataTy b -> Dom String (iSDataTy b, Maybe a)) -> View a
 leafView {a} s b st0 i u ue =
-
   MkView [((Z, s, b) ** MkViewNode st0 i u ue [] [])]
 
-{-
+
 export
-statelessLeafView : (s:String) -> Dom String () -> View a
-statelessLeafView {a} s i =
-  MkView (the ViewNode (Z, s, SUnit) a $
-              MkViewNode st0 i (\_ -> pure ()) (\_, _ -> pure ()) [] []
-         )
--}
+mkView : (s:String) -> (b:SDataTy) -> iSDataTy b ->
+              Dom String () -> (iSDataTy b -> Dom String (iSDataTy b)) ->
+                (String -> iSDataTy b -> Dom String (iSDataTy b, Maybe a)) ->
+                  Vect n (View a) -> Vect n DomPath -> View a
+mkView {n} {a} s b st0 i u ue c cp =
+  MkView [((n, s, b) ** MkViewNode st0 i u ue c cp)]
