@@ -60,6 +60,7 @@ export
 textinput : View String
 textinput = textinput' Nothing
 
+{-
 export
 container : String -> View a -> View a
 container tag content =
@@ -81,10 +82,11 @@ container tag content =
 export
 div : View a -> View a
 div x = container "div" x
+-}
 
 {-
 export
 pairView : View a -> View b -> View (a,b)
 pairView x y =
   mkView
--}    
+-}
