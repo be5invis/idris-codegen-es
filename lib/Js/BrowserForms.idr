@@ -4,11 +4,11 @@ import Js.BrowserBase
 import public Js.BrowserUtils
 import Data.Vect
 
-public
+export
 TyError : Type
 TyError = List String
 
-public
+export
 MError : Type -> Type
 MError a = Either TyError a
 
@@ -20,7 +20,7 @@ Functor FormUpdate where
   map f ResetForm = ResetForm
   map f (UpdateValue x) = UpdateValue $ f x
 
-public
+export
 data Form : Type -> Type where
   MkForm : MError a -> View (FormUpdate a) (MError a) -> Form a
 
@@ -36,7 +36,7 @@ form_update _ (FormSubmitVal) (Left s, _) = ((Left s, Nothing), Nothing)
 form_update _ (FormSetVal x) _ = ((x, Nothing) , Nothing)
 
 
-public
+export
 buildForm : Form a -> View a a
 buildForm (MkForm z vw) =
   let vw_sub = (FormSetVal <$> vw .?. snd) .+. (button FormSubmitVal "Submit")
@@ -48,7 +48,7 @@ buildForm (MkForm z vw) =
 
 
 -------- form primitives --------
-public
+export
 textForm : Form String
 textForm =
   MkForm
@@ -58,7 +58,7 @@ textForm =
     procInput ResetForm = ""
     procInput (UpdateValue x) = x
 
-public
+export
 formMap : (b->Maybe a, a->Either TyError b) -> Form a -> Form b
 formMap (f,g) (MkForm z vw) =
   MkForm (z >>= g) ( (>>=g) <$> vw .$. onset )
@@ -69,11 +69,11 @@ formMap (f,g) (MkForm z vw) =
         Nothing => ResetForm
         Just z => UpdateValue z
 
-public
+export
 formMap' : (b->a, a->b) -> Form a -> Form b
 formMap' (f,g) form = formMap (\x => Just $ f x, \x => Right $ g x) form
 
-public
+export
 selectForm : Vect (S n) String -> Form (Fin (S n))
 selectForm lst =
   MkForm
@@ -86,7 +86,7 @@ selectForm lst =
     procEvents (FS x) = Right x
 
 
-public
+export
 combine : Form k -> (a->k) -> (k->Form a) -> Form a
 combine (MkForm kZ selVw) getK kForm =
   MkForm (kZ >>= getZ) ((dynView combineAForm) `chainView` (selVw .$. (getK<$>) ) )
@@ -111,7 +111,7 @@ joinErrors (Right x) (Right y) = Right (x,y)
 joinErrors x         y         = Left $ errors x ++ errors y
 
 
-public
+export
 tupleForm : Form a -> Form b -> Form (a,b)
 tupleForm (MkForm xz xvw) (MkForm yz yvw) =
   MkForm
@@ -133,16 +133,16 @@ tupleForm (MkForm xz xvw) (MkForm yz yvw) =
     updInp u (x,y,_) = (x,y, Just u)
 
 
-public
+export
 vtrans : {c : Type} -> ({a:Type} -> {b:Type} -> View a b -> View a b) -> Form c -> Form c
 vtrans f (MkForm x v) = MkForm x $ f v
 
 -------- utils ------------
-public
+export
 integerForm : Form Integer
 integerForm = formMap' (cast, cast) $ textForm
 
-public
+export
 natForm : Form Nat
 natForm =
   formMap (Just . cast, i2n) integerForm

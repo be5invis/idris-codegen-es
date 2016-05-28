@@ -58,7 +58,7 @@ tpath' f (HtmlElement tag attrs events childs) =
 tpath : (Path->Path) -> List Html -> List Html
 tpath f =  map (tpath' f)
 
-abstract
+export
 data View : Type -> Type -> Type where
   MkView : d -> (d->List Html) -> (Event->d->(d, Maybe b)) -> (a->d->d) -> View a b
 
@@ -71,6 +71,7 @@ viewMap f (MkView z vw updEvent updInput) =
     (\e, s => let (news, res) = updEvent e s in (news, f <$> res) )
     updInput
 
+export
 Functor (View c) where
   map = viewMap
 
@@ -88,7 +89,7 @@ stepInput x (MkView z vw upd1 upd2) =
   in MkView newz vw upd1 upd2
 
 
-public
+export
 record App a b where
   constructor MkApp
   state : b
@@ -264,7 +265,7 @@ mutual
       refreshApp $ record {state = newState, view = newView} app
 
 
-public
+export
 runApp : App a b -> JSIO ()
 runApp {a} {b} app =
   do
@@ -289,22 +290,22 @@ attrChange f (MkView x r y z) = MkView x ((map $ attrChangeHtml f) . r) y z
 -------- view primitives --------
 
 |||Ignores Input, making a view that accepts any input
-public
+export
 ii : View a b -> View c b
 ii (MkView z r ue ui) = MkView z r ue (\x, y => y)
 
 ||| Ignores Ouput, making a view that makes no output, hence the outut can have any type needed
-public
+export
 io : View a b -> View a c
 io (MkView z r ue ui) = MkView z r (\x,y => (fst $ ue x y ,Nothing)) ui
 
-public
+export
 init : View a b -> a -> View a b
 init = flip stepInput
 
 infixl 4 .$. , .?. , <?>
 
-public
+export
 (<?>) : (a->Maybe b) -> View c a -> View c b
 (<?>) f (MkView z r ue ui) =
   MkView
@@ -317,7 +318,7 @@ public
       let (ns, mv) = ue x s
       in (ns, mv >>= f)
 
-public
+export
 (.?.) : View b c -> (a-> Maybe b) -> View a c
 (.?.) (MkView z r ue ui) f =
   MkView
@@ -331,7 +332,7 @@ public
         Just z  => ui z s
         Nothing => s
 
-public
+export
 (.$.) : View b c -> (a-> b) -> View a c
 (.$.) v f = v .?. (\x => Just $ f x)
 
@@ -349,7 +350,7 @@ oupdEvt (PathSnd z, val) (x, y) =
 ovw : (View a c, View b c) -> List Html
 ovw (x, y) = (tpath PathFst $ render x) ++ (tpath PathSnd $ render y)
 
-public
+export
 (.+.): View a c -> View a c -> View a c
 (.+.) x y =
   MkView
@@ -359,7 +360,7 @@ public
   (\z,(x,y) => (stepInput z x, stepInput z y))
 
 
-public
+export
 empty : View a b
 empty =
   MkView
@@ -368,7 +369,7 @@ empty =
     (\_, _ => ((), Nothing))
     (\_, _ => ())
 
-public
+export
 textinput : View String String
 textinput =
   MkView
@@ -388,7 +389,7 @@ addindex {k} x =
     idx Z = []
     idx (S i) = FZ :: (map FS $ idx i)
 
-public
+export
 selectinput : Vect (S k) String -> View (Fin (S k)) (Fin (S k))
 selectinput opts =
   MkView
@@ -419,7 +420,7 @@ selectinput opts =
     updEvt {k} (_,s) _ = let i = readSel k s in (i, Just i)
     updInput x z = x
 
-public
+export
 t : String -> View a b
 t x =
   MkView
@@ -428,7 +429,7 @@ t x =
     (\_, _ => ((), Nothing))
     (\_,_ => ())
 
-public
+export
 button : b -> String -> View a b
 button val lbl =
   MkView
@@ -441,7 +442,7 @@ button val lbl =
     updEvt _ _ = ((), Just val)
 
 
-public
+export
 foldView : (i -> st -> (st, Maybe b)) -> (a -> st -> st) -> st -> View st i -> View a b
 foldView onEvt onSet z vw =
   MkView
@@ -464,15 +465,15 @@ groupElement tag (MkView z r ue ui) =
     ue
     ui
 
-public
+export
 div : View a b -> View a b
 div x = groupElement "div" x
 
-public
+export
 span : View a b -> View a b
 span x = groupElement "span" x
 
-public
+export
 dynView : (a->View Void b) -> View a b
 dynView rf =
   MkView
@@ -488,6 +489,6 @@ dynView rf =
     updEvt x (Just v) = let (ns, mv) = stepEvent x v in (Just ns, mv)
     updInp x _ = Just $ rf x
 
-public
+export
 addClass : String -> View a b -> View a b
 addClass classNew = attrChange (\x => record {class_ = classNew :: class_ x } x)

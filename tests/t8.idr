@@ -1,5 +1,6 @@
 import Js.IO
 
+export
 data ServiceM : Type -> Type where
   PureServ : a -> ServiceM a
 
@@ -8,7 +9,7 @@ get_jsio : ServiceM a -> JSIO (Either String a)
 get_jsio (PureServ x) = do
   pure $ Right x
 
-public
+export
 mytst : String -> ServiceM String
 mytst x = PureServ $ "ola "
 
@@ -27,7 +28,7 @@ mytstJs x = do
 tst2 : JSIO String
 tst2 = call_fn mytstJs "inputmytst"
 
-public
+export
 main : JSIO ()
 main = do
   putStrLn' "start"
