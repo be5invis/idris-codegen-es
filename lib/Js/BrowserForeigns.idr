@@ -2,6 +2,8 @@ module Js.BrowserForeigns
 
 import public Js.IO
 
+%access export
+
 removeChild : Ptr -> Int -> JSIO ()
 removeChild node pos = jscall "%0.removeChild(%0.childNodes[%1] )" (Ptr -> Int -> JSIO ()) node pos
 

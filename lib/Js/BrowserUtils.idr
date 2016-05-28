@@ -3,19 +3,19 @@ module Js.BrowserUtils
 import Js.BrowserBase
 import Js.IO
 
-public
+export
 static : View a b -> a -> View Void b
 static vw x = ii $ init vw x
 
-public
+export
 dynbtn : View (a, String) a
 dynbtn = dynView (\(x,y) => button x y )
 
-public
+export
 dyntext : View String a
 dyntext = dynView t
 
-public
+export
 listView : View a b -> View (List a) b
 listView v =
   dynView $ r
@@ -23,13 +23,13 @@ listView v =
     r [] = empty
     r (x::xs) = static v x .+. r xs
 
-public
+export
 merge : List (View a b) -> View a b
 merge (x::xs) = x .+. merge xs
 merge []      = empty
 
 
-public
+export
 dynViewMaybe : (a->View Void b) -> View (Maybe a) b
 dynViewMaybe r =
   dynView r2
@@ -38,7 +38,7 @@ dynViewMaybe r =
     r2 (Just x) = r x
 
 
-public
+export
 chainView : View (Either a b) c -> View a b -> View a c
 chainView f x =
   foldView
@@ -56,7 +56,7 @@ chainView f x =
     updInp : a -> Maybe (Either a b) -> Maybe (Either a b)
     updInp x _ = Just $ Left x
 
-public
+export
 chainViewS : View a c -> View a a -> View a c
 chainViewS f x =
   chainView (f .$. pinput) x
@@ -64,7 +64,7 @@ chainViewS f x =
     pinput (Right x) = x
     pinput (Left x) = x
 
-public
+export
 viewApp : View a b -> App () ()
 viewApp vw =
   MkApp
