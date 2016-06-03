@@ -114,6 +114,13 @@ domLog : String -> Dom e ()
 domLog s = MkDom $ \_, _=> putStr' s
 
 export
+domLogPath : DomPath -> Dom e ()
+domLogPath p = MkDom $ \x, _=>
+    case !(solvePath p x) of
+      Nothing => putStr' "undefined"
+      Just (MkDomNode y) => jscall "console.log(%0)" (Ptr -> JS_IO ()) y
+
+export
 appendNode : String -> DomPath -> Dom e (Maybe DomPath)
 appendNode tag path = MkDom $ \node, _ =>
     case !(solvePath path node) of

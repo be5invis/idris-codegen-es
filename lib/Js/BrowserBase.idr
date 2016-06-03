@@ -88,10 +88,14 @@ mutual
   updateNodeView (MapNode _ v1) (MapNode f2 v2) =
     pure $ MapNode f2 !(updateNodeView v1 v2)
   updateNodeView (AjaxFormNode v1) (AjaxFormNode v2) =
-    pure $ AjaxFormNode !(updateNodeView v1 v2)
+    do
+      Just v3 <- chrootDom (child 0 root) (applyEvents leftEvent $ updateNodeView v1 v2)
+      pure $ AjaxFormNode v3
   updateNodeView (SimpleContainer t1 v1) vf@(SimpleContainer t2 v2) =
     if t1 == t2 then
-      pure $ SimpleContainer t2 !(updateNodeView v1 v2)
+      do
+        Just v3 <- chrootDom (child 0 root) $ updateNodeView v1 v2
+        pure $ SimpleContainer t2 v3
       else do
         clear root
         initViewDom vf
@@ -101,11 +105,11 @@ mutual
       let s3 = updateFoldNodeState u s1 s2
       v2 <- updateNodeView v1 (vf s3)
       pure $ FoldNode s3 v2 vf f Nothing
---  updateNodeView _ v =
---    do
---      clear root
---      initViewDom v
---      pure v
+  updateNodeView _ v =
+    do
+      clear root
+      initViewDom v
+      pure v
 
   initViewDom : View c -> Dom ViewEvent ()
   initViewDom (TextNode s) =
@@ -143,11 +147,11 @@ mutual
     pure (InputNode Nothing, Just e)
   updateNodeEvent (PathLeft x, e) (AppendNode y z) =
     do
-      (ny, v) <- updateNodeEvent (x, e) y
+      Just (ny, v) <- chrootDom (child 0 root) (applyEvents leftEvent $ updateNodeEvent (x, e) y)
       pure (AppendNode ny z, v)
   updateNodeEvent (PathRight x, e) (AppendNode y z) =
     do
-      (nz, v) <- updateNodeEvent (x, e) z
+      Just (nz, v) <- chrootDom (child 1 root) (applyEvents rightEvent $ updateNodeEvent (x, e) z)
       pure (AppendNode y nz, v)
   updateNodeEvent e (MapNode f v) =
     do
@@ -157,11 +161,11 @@ mutual
     pure (AjaxFormNode v, Just Submit)
   updateNodeEvent (PathLeft p, e) (AjaxFormNode v) =
     do
-      (v2, x) <- updateNodeEvent (p,e) v
+      Just (v2, x) <- chrootDom (child 0 root) (applyEvents leftEvent $ updateNodeEvent (p,e) v)
       pure (AjaxFormNode v2, Value <$> x)
   updateNodeEvent e (SimpleContainer t v) =
     do
-      (v2, x) <- updateNodeEvent e v
+      Just (v2, x) <- chrootDom (child 0 root) $ updateNodeEvent e v
       pure (SimpleContainer t v2, x)
   updateNodeEvent e (FoldNode s v vf f _) =
     do
