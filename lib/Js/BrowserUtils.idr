@@ -1,7 +1,7 @@
 module Js.BrowserUtils
 
 import Js.BrowserBase
-
+{-
 export
 button : a -> String -> View a
 button val lbl =
@@ -59,7 +59,7 @@ textinput' s =
 export
 textinput : View String
 textinput = textinput' Nothing
-
+-}
 {-
 export
 container : String -> View a -> View a

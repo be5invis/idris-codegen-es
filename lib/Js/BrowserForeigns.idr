@@ -23,7 +23,6 @@ childNode pos node = jscall "%0.childNodes[%1]" (Ptr -> Int -> JS_IO Ptr) node p
 
 setTextContent : Ptr -> String -> JS_IO ()
 setTextContent node s = jscall "%0.textContent = %1" (Ptr -> String -> JS_IO ()) node s
---setTextContent node s = jscall "console.log([%0,%1])" (Ptr -> String -> JS_IO ()) node s
 
 appendChild : Ptr -> Ptr -> JS_IO Ptr
 appendChild node child = jscall "%0.appendChild(%1)" (Ptr -> Ptr -> JS_IO Ptr) node child
@@ -58,8 +57,8 @@ addEventListener node evt action =
 getElementById : String -> JS_IO Ptr
 getElementById x = jscall "document.getElementById(%0)" (String -> JS_IO Ptr) x
 
-setValue : Ptr -> String -> JS_IO ()
-setValue node val = jscall "%0.value = %1" (Ptr->String->JS_IO ()) node val
+setVal : Ptr -> String -> JS_IO ()
+setVal node val = jscall "%0.value = %1" (Ptr->String->JS_IO ()) node val
 
 setClass : Ptr -> String -> JS_IO ()
 setClass node val = jscall "%0.className = %1" (Ptr->String->JS_IO ()) node val

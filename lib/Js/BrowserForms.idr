@@ -6,24 +6,11 @@ import Js.BrowserBase
 import public Js.BrowserUtils
 import Data.Vect
 
-public export
+export
 TyError : Type
 TyError = List String
 
 export
-data Form : Type -> Type where
-  MkForm : (Maybe a -> View a) -> Form a
-
---public
---buildForm : Maybe a -> Form a -> View a
-
-{-
-
-public
-TyError : Type
-TyError = List String
-
-public
 MError : Type -> Type
 MError a = Either TyError a
 
@@ -35,6 +22,48 @@ errors (Left x)  = x
 joinMErrors : (a -> b -> c) ->  MError a -> MError b -> MError c
 joinMErrors f (Right x) (Right y) = Right $ f x y
 joinMErrors _ x         y         = Left $ errors x ++ errors y
+
+export
+data Form : Type -> Type where
+  MkForm : Typeable a => MError a -> (MError a -> View (MError a)) -> Form a
+
+public export
+data FormUpdate a = ResetForm | FormSetVal a
+
+export
+buildForm : Maybe (FormUpdate a) -> Form a -> View a
+buildForm {a} x (MkForm s0 f) =
+  foldp
+    s0
+    vw
+    update
+    ((\y => \_=> g y) <$> x)
+  where
+    g ResetForm = s0
+    g (FormSetVal y) = Right y
+    update Submit (Right z) = (s0, Just z)
+    update Submit (Left []) = (Left ["Pease fill the form"], Nothing)
+    update Submit (Left z) = (Left z, Nothing)
+    update (Value z) _ = (z, Nothing)
+    vw : MError a -> View (FormEvent (MError a))
+    vw z =
+      ajaxForm $ (f z) ++ (concat $ map (div . text) $ errors z)
+
+export
+buildForm' : Form a -> View a
+buildForm' = buildForm Nothing
+
+export
+textForm : Form String
+textForm =
+  MkForm
+    (Right "")
+    vw
+  where
+    vw (Right x) = Right <$> (textinput $ Just x)
+    vw (Left _) = Right <$> textinput'
+{-
+
 
 FormState : Type -> Type
 FormState a = (a, Bool)
@@ -125,7 +154,8 @@ combine (MkForm kZ selVw out inp) getK kForm =
     combineAForm (Right (k ,Left e)) = let (MkForm _ vw _ _) = kForm x in ii ( \x =>  <$> vw)
     combineAForm (Right (Right x)) =  let (MkForm _ vw) = kForm (getK x) in static vw (UpdateValue x)
     --combineAForm (Left (UpdateValue x) ) =  let (MkForm _ vw) = kForm (getK x) in static vw (UpdateValue x)
-    --combineAForm (Left ResetForm ) = trace "reseted" $ t "reseted"-- let (MkForm _ vw) = kForm (getK x) in static vw (UpdateValue x)
+    --combineAForm (Left ResetForm ) = trace "reseted" $ t "reseted"
+    -- let (MkForm _ vw) = kForm (getK x) in static vw (UpdateValue x)
 
     --combineAForm _ = neutral
 

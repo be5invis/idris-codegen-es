@@ -5,8 +5,7 @@ import Data.Vect
 
 vw : String -> View String
 vw s =
-  div $ ii (buildForm $ textForm)
-    <+> text s
+  (div $ buildForm' textForm) ++ text s
 
 page : App String String
 page = MkApp
@@ -14,6 +13,6 @@ page = MkApp
         vw
         (\x, y => (x, never))
 
-main : JSIO ()
+main : JS_IO ()
 main = do
   runApp page

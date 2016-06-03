@@ -3,47 +3,36 @@ module Js.BrowserBase
 import Js.ASync
 import public Data.Vect
 import public Js.BrowserDom
-import public Js.SimpleData
+import public Js.Typeable
 
-Path : Type
-Path = List Nat
+import Debug.Trace
+
+data Path = PathHere | PathRight Path | PathLeft Path
 
 ViewEvent : Type
 ViewEvent = (Path, String)
 
---NChilds Tag StateType
-ViewNodeTag : Type
-ViewNodeTag = (Nat, String, SDataTy)
+hereEvent : DomEvent String -> DomEvent ViewEvent
+hereEvent x = (\y => (PathHere, y)) <$> x
 
-total
-ViewStateType : ViewNodeTag -> Type
-ViewStateType (_, _ , x) = iSDataTy x
+leftEvent : ViewEvent -> ViewEvent
+leftEvent (p, s) = (PathLeft p,s)
 
-mutual
-  record ViewNode (t:ViewNodeTag) a b where
-    constructor MkViewNode
-    state : ViewStateType t
-    init : Dom String ()
-    update : ViewStateType t -> Dom String (ViewStateType t)
-    updateEvent : String -> ViewStateType t -> Dom String (ViewStateType t, Maybe b)
-    updateChildEvent : a -> ViewStateType t -> Dom String (ViewStateType t, Maybe b)
-    childs : Vect (fst t) (View a)
-    childsPaths : Vect (fst t) DomPath
+rightEvent : ViewEvent -> ViewEvent
+rightEvent (p, s) = (PathRight p, s)
 
-
-  export
-  data View : Type -> Type where  --MkView (List (ViewNodeSigma a))
-    MkView : (t:ViewNodeTag) -> (a -> b) -> ViewNode t c a -> View b
-
-{-
-export
-Semigroup (View a) where
-  (<+>) (MkView a) (MkView b) = MkView $ a ++ b
+public export
+data FormEvent a = Value a | Submit
 
 export
-Monoid (View a) where
-  neutral = MkView []
--}
+data View : Type -> Type where
+  TextNode : String -> View a
+  InputNode : Maybe String -> View String
+  AppendNode : View a -> View a -> View a
+  MapNode : (a -> Maybe b) -> View a -> View b
+  AjaxFormNode : View a -> View (FormEvent a)
+  SimpleContainer : String -> View a -> View a
+  FoldNode : Typeable b => b -> View a -> (b -> View a) -> (a->b->(b, Maybe c)) -> Maybe (b->b) -> View c
 
 public export
 record App a b where
@@ -66,108 +55,125 @@ setAppState (MkCtx ctx) z = jscall "%0.app = %1" (Ptr -> Ptr -> JS_IO ()) ctx (b
 getAppState : Ctx a b -> JS_IO (AppState a b)
 getAppState (MkCtx ctx) = believe_me <$> jscall "%0.app" ( Ptr -> JS_IO Ptr) ctx
 
-{-
-data NodeMatch a = MatchNode Nat (t:ViewNodeTag ** (ViewNode t a, ViewNode t a))
-                 | ReplaceNode Nat (t:ViewNodeTag ** ViewNode t a )
-                 | NewNode (t:ViewNodeTag ** ViewNode t a)
-                 | DeleteNode Nat
-
-
-matchNodes : Nat -> (t1: ViewNodeTag) -> (t2: ViewNodeTag) ->
-                Dec (t1 = t2) -> ViewNode t1 a -> ViewNode t2 a -> NodeMatch a
-matchNodes k t1 t1 (Yes Refl) y z = MatchNode k (t1 ** (y,z))
-matchNodes k t1 t2 (No contra) y z = ReplaceNode k (t2 ** z)
--}
-
-{-
-matchNodesList : Nat -> List (ViewNodeSigma a) -> List (ViewNodeSigma a) -> List (NodeMatch a)
-matchNodesList pos ((t1**x)::xs) ((t2**y)::ys) = (matchNodes pos t1 t2 (decEq t1 t2) x y) :: matchNodesList (pos + 1) xs ys
-matchNodesList pos [] (y::ys) = NewNode y :: matchNodesList (pos + 1) [] ys
-matchNodesList pos (x::xs) [] = DeleteNode pos :: matchNodesList (pos + 1) xs []
-matchNodesList pos [] [] = []
--}
-
---matchViewNodes (t ** ViewNode )
 
 mutual
-  updateViewNode : ViewEvent -> Path -> Ctx a b -> DomNode -> ViewNode t d c -> JS_IO (ViewNode t d c, Maybe c)
-  updateViewNode ([], e) p ctx container v =
-    do
-      (newst, ma) <- runDom container (updateApp ctx p) $ (updateEvent v) e (state v)
-      let newV = MkViewNode newst (init v) (update v) (updateEvent v) (updateChildEvent v) (childs v) (childsPaths v)
-      pure (newV, ma)
 
-  updateView : ViewEvent -> Path -> Ctx a b -> DomNode -> View a -> JS_IO (View a, Maybe a)
-  updateView evt p ctx container (MkView tag f node) =
+  updateFoldNodeState : (Typeable s, Typeable t) => Maybe (t->t) -> s -> t -> t
+  updateFoldNodeState {t} u w1 w2 =
+    case the (Maybe t) (tcast w1) of
+      Nothing => w2
+      Just w1' => case u of
+                    Nothing => w1'
+                    Just u' => u' w1'
+
+  updateNodeView : View a -> View b -> Dom ViewEvent (View b)
+  updateNodeView (TextNode sOld) (TextNode sNew) =
+    if sOld == sNew then pure $ TextNode sNew
+      else
+        do
+          setText sNew root
+          pure $ TextNode sNew
+  updateNodeView (InputNode _) (InputNode force) =
+    case force of
+      Nothing => pure $ InputNode force
+      Just s =>
+        do
+          setValue s (child 0 root)
+          pure $ InputNode force
+  updateNodeView (AppendNode x y) (AppendNode z w) =
     do
-      (newNode, val) <- updateViewNode evt p ctx container node
-      pure $ (MkView tag f newNode, f <$> val)
-{-
-  updateView (t::r, e) p ctx container (MkView l) =
+      Just v1 <- chrootDom (child 0 root) (applyEvents leftEvent $ updateNodeView x z)
+      Just v2 <- chrootDom (child 1 root) (applyEvents rightEvent $ updateNodeView y w)
+      pure $ AppendNode v1 v2
+  updateNodeView (MapNode _ v1) (MapNode f2 v2) =
+    pure $ MapNode f2 !(updateNodeView v1 v2)
+  updateNodeView (AjaxFormNode v1) (AjaxFormNode v2) =
+    pure $ AjaxFormNode !(updateNodeView v1 v2)
+  updateNodeView (SimpleContainer t1 v1) vf@(SimpleContainer t2 v2) =
+    if t1 == t2 then
+      pure $ SimpleContainer t2 !(updateNodeView v1 v2)
+      else do
+        clear root
+        initViewDom vf
+        pure vf
+  updateNodeView (FoldNode s1 v1 _ _ _) (FoldNode s2 _ vf f u) =
     do
-      let (b,v::a) = splitAt t l
-      let pos = length b
-      c <- child' pos container
-      case c of
-        Just cContainer =>
+      let s3 = updateFoldNodeState u s1 s2
+      v2 <- updateNodeView v1 (vf s3)
+      pure $ FoldNode s3 v2 vf f Nothing
+--  updateNodeView _ v =
+--    do
+--      clear root
+--      initViewDom v
+--      pure v
+
+  initViewDom : View c -> Dom ViewEvent ()
+  initViewDom (TextNode s) =
+    setText s root
+  initViewDom (InputNode force) =
+    do
+      Just i <- appendNode "input" root
+      registEvent i "change" (hereEvent targetValue)
+      case force of
+        Nothing => pure ()
+        Just s => setValue s i
+  initViewDom (AppendNode x y) =
+    do
+      Just c1 <- appendNode "span" root
+      Just c2 <- appendNode "span" root
+      chrootDom c1 (applyEvents leftEvent $ initViewDom x)
+      chrootDom c2 (applyEvents rightEvent $ initViewDom y)
+      pure ()
+  initViewDom (MapNode _ v) = initViewDom v
+  initViewDom (AjaxFormNode v) =
+    do
+      Just f <- appendNode "form" root
+      registEvent f "submit" (hereEvent $ preventDefault >>= \_=> pure "")
+      chrootDom f (applyEvents leftEvent $ initViewDom v)
+      pure ()
+  initViewDom (SimpleContainer tag v) =
+    do
+      Just c <- appendNode tag root
+      chrootDom c (initViewDom v)
+      pure ()
+  initViewDom (FoldNode _ v _ _ _ ) = initViewDom v
+
+  updateNodeEvent : ViewEvent -> View a -> Dom ViewEvent (View a, Maybe a)
+  updateNodeEvent (PathHere, e) (InputNode f) =
+    pure (InputNode Nothing, Just e)
+  updateNodeEvent (PathLeft x, e) (AppendNode y z) =
+    do
+      (ny, v) <- updateNodeEvent (x, e) y
+      pure (AppendNode ny z, v)
+  updateNodeEvent (PathRight x, e) (AppendNode y z) =
+    do
+      (nz, v) <- updateNodeEvent (x, e) z
+      pure (AppendNode y nz, v)
+  updateNodeEvent e (MapNode f v) =
+    do
+      (v2, x) <- updateNodeEvent e v
+      pure (MapNode f v2, x >>= f)
+  updateNodeEvent (PathHere, _) (AjaxFormNode v) =
+    pure (AjaxFormNode v, Just Submit)
+  updateNodeEvent (PathLeft p, e) (AjaxFormNode v) =
+    do
+      (v2, x) <- updateNodeEvent (p,e) v
+      pure (AjaxFormNode v2, Value <$> x)
+  updateNodeEvent e (SimpleContainer t v) =
+    do
+      (v2, x) <- updateNodeEvent e v
+      pure (SimpleContainer t v2, x)
+  updateNodeEvent e (FoldNode s v vf f _) =
+    do
+      (v2, x) <- updateNodeEvent e v
+      case x of
+        Nothing =>
+          pure (FoldNode s v vf f Nothing, Nothing)
+        Just y =>
           do
-            (nview, out) <- updateViewNode (r,e) (p ++ [pos]) ctx cContainer v
-            pure (MkView $ b ++ (nview::a), out)
-        Nothing => pure (MkView l, Nothing)
--}
-
-{-  diffUpdateViewNode {a} {b} ctx container path
-      initNew : JS_IO (ViewNode a)
-      initNew =
-        do
-          clear' container
-          runDom container (updateApp ctx path) i
-          pure $ MkViewNode typ t o s i u c p
--}
-
-
-  diffUpdateChilds : Ctx a b -> DomNode -> Path -> Vect k DomPath -> Vect k (View a)
-                        -> Vect k (View a) -> JS_IO (Vect k (View a))
-  diffUpdateChilds ctx container path op oc nc =
-    sequence $ map
-        diffUpdateChild
-        (range `zip` (op `zip` (oc `zip` nc)))
-    where
-      diffUpdateChild : (Fin z, DomPath, View a, View a) -> JS_IO (View a)
-      diffUpdateChild (pos, dpath, vold, vnew) =
-        case !(solvePath dpath container) of
-          Just ncont => diffUpdateView ctx ncont (path ++ [finToNat pos]) (vold, vnew)
-
-  diffUpdateNodesAux : (t1:ViewNodeTag) ->  (t2:ViewNodeTag) -> Dec (t1 = t2) -> Ctx a b -> DomNode -> Path
-                        -> ViewNode t1 c1 d1 -> ViewNode t2 c2 d2
-                          -> JS_IO (ViewNode t2 c2 d2)
-  diffUpdateNodesAux t1 t1 (Yes Refl) y z x1 y1 z1 =
-    do
-      newChilds <- diffUpdateChilds (childsPaths x) (childs x) (childs y)
-      newSt <- runDom container (updateApp ctx path) $ (update y) (state x)
-      pure $ MkViewNode newSt (init x) (update x) (updateEvent x) newChilds (childsPaths x)
-  diffUpdateNodesAux t1 t2 (No contra) y z x1 y1 z1 = ?diffUpdateNodesAux_rhs_2
-
-  diffUpdateNodes : Ctx a b -> DomNode -> Path -> ViewNode t1 c1 d1 -> ViewNode t2 c2 d2 -> JS_IO (ViewNode t2 c2 d2)
-  diffUpdateNodes {t1} {t2} ctx container path v1 v2 =
-    diffUpdateNodesAux t1 t2 (decEq t1 t2) ctx container path v1 v2
-    
-  diffUpdateView : Ctx a b -> DomNode -> Path -> (View a, View a) -> JS_IO (View a)
-  diffUpdateView ctx container path (MkView tag1 f1 node1, MkView tag2 f2 node2) =
-    do
-      newNode <- diffUpdateNodes ctx container path node1 node2
-      pure $ MkView tag2 f2 node2
-{-    MkView <$> (sequence $ map updateMatch $ reverse $ matchNodesList 0 lo ln)
-    where
-      updateMatch (MatchNode pos (t ** (v1,v2))) =
-        do
-          c <- child' pos container
-          case c of
-            Just newContainer =>
-              do
-                vr <- diffUpdateEqNodes ctx newContainer (path++[pos]) v1 v2
-                pure (t ** vr)
--}
+            let (s2, z) = f y s
+            v3 <- updateNodeView v (vf s2)
+            pure (FoldNode s2 v3 vf f Nothing, z)
 
   updateAppVal : Ctx a b -> a -> JS_IO ()
   updateAppVal ctx x =
@@ -175,44 +181,33 @@ mutual
       appSt <- getAppState ctx
       let app = theApp appSt
       let (newS, async) = (update app) x (state app)
-      finalView <- diffUpdateView ctx (container appSt) [] (lastView appSt, (render app) newS)
-      setAppState ctx (record{lastView = finalView, theApp = record{state = newS} app} appSt)
+      let vOld = lastView appSt
+      let vNew = (render app) newS
+      newViewNode <- runDom (container appSt) (updateApp ctx) (updateNodeView vOld vNew)
+      setAppState ctx (record{lastView = newViewNode, theApp = record{state = newS} app} appSt)
       setASync (updateAppVal ctx) async
 
-
-  updateApp : Ctx a b -> Path -> String -> JS_IO ()
-  updateApp ctx p e =
+  updateApp : Ctx a b -> ViewEvent -> JS_IO ()
+  updateApp ctx e =
     do
       appSt <- getAppState ctx
-      (view2, mVal) <- updateView (p,e) [] ctx (container appSt) (lastView appSt)
-      setAppState ctx (record{lastView=view2} appSt)
+      (n2, mVal) <- runDom (container appSt) (updateApp ctx) (updateNodeEvent e (lastView appSt))
+      setAppState ctx (record{lastView = n2} appSt)
       case mVal of
         Nothing => pure ()
         Just x => updateAppVal ctx x
 
-
-  initView : Path -> Ctx a b -> DomNode -> View d -> JS_IO (View d)
-  initView path ctx container (MkView t f node) =
-    do
-      newNode <- initViewNode ctx container path node
-      pure $ MkView t f newNode
-
-  initViewNode : Ctx a b -> DomNode -> Path -> ViewNode t d c -> JS_IO (ViewNode t d c)
-  initViewNode ctx container path v =
-    do
-      c <- appendNode' "span" container
-      runDom c (updateApp ctx path) (init v)
-      newSt <- runDom c (updateApp ctx path) $ (update v) (state v)
-      newChilds <- sequence $ map (initView path ctx container) (childs v)
-      pure $ (MkViewNode newSt (init v) (update v) (updateEvent v) (updateChildEvent v) newChilds (childsPaths v))
-
+  initView : Ctx a b -> DomNode -> View d -> JS_IO ()
+  initView ctx container view =
+      runDom container (updateApp ctx) (initViewDom view)
 
 startApp : Ctx a b -> App a b -> DomNode -> JS_IO ()
 startApp ctx x container =
   do
     let v = render x $ state x
-    v2 <- initView [] ctx container v
-    setAppState ctx $ MkAppState x v2 container
+    c <- appendNode' "span" container
+    initView ctx c v
+    setAppState ctx $ MkAppState x v c
 
 
 export
@@ -224,20 +219,50 @@ runApp {a} {b} app =
     ctx <- jscall "{}" (() -> JS_IO Ptr) ()
     startApp (the (Ctx a b) $ MkCtx ctx) app c
 
+-------- View Instances ----
 export
-leafView : (s:String) -> (b:SDataTy) -> iSDataTy b ->
-              Dom String () -> (iSDataTy b -> Dom String (iSDataTy b)) ->
-                (String -> iSDataTy b -> Dom String (iSDataTy b, Maybe a)) -> View a
-leafView {a} s b st0 i u ue =
-  MkView (Z, s, b) id (the (ViewNode (Z,s, b) Void a) $ MkViewNode st0 i u ue (\x, _ => void x ) [] [])
+Functor View where
+  map f x = MapNode (\x => Just $ f x) x
+
+export
+Semigroup (View t) where
+  (<+>) a b = AppendNode a b
+
+export
+Monoid (View t) where
+  neutral = TextNode ""
+
+-------- Primitives --------
+
+export
+text : String -> View a
+text s = TextNode s
+
+export
+textinput : Maybe String -> View String
+textinput x = InputNode x
+
+export
+textinput' : View String
+textinput' = textinput Nothing
+
+infixr  7 ++
+export
+(++) : View a -> View a -> View a
+(++) x y = AppendNode x y
 
 
-{-
 export
-mkView : (s:String) -> (b:SDataTy) -> iSDataTy b ->
-              Dom String () -> (iSDataTy b -> Dom String (iSDataTy b)) ->
-                (String -> iSDataTy b -> Dom String (iSDataTy b, Maybe a)) ->
-                  Vect n (View a) -> Vect n DomPath -> View a
-mkView {n} {a} s b st0 i u ue c cp =
-  MkView [((n, s, b) ** MkViewNode st0 i u ue c cp)]
--}
+ajaxForm : View a -> View (FormEvent a)
+ajaxForm x = AjaxFormNode x
+
+export
+foldp : Typeable b => b -> (b->View a) -> (a->b->(b, Maybe c)) -> Maybe (b->b) -> View c
+foldp x y f z =
+  case z of
+    Just w => FoldNode (w x) (y $ w x) y f z
+    Nothing => FoldNode x (y x) y f z
+
+export
+div : View a -> View a
+div x = SimpleContainer "div" x

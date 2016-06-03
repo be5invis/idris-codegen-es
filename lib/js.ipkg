@@ -1,6 +1,6 @@
 package js
 
-pkgs = contrib, lightyear
+pkgs = contrib, lightyear, pruviloj
 
 modules = Js.ASync
         , Js.Browser
@@ -13,7 +13,8 @@ modules = Js.ASync
         , Js.BrowserNetwork
         , Js.Json
         , Js.ServiceTypes
-        , Js.Node 
+        , Js.Node
         , Js.Arango
         , Js.SimpleData
         , Js.RethinkDB
+        , Js.Typeable

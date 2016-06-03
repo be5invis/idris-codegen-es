@@ -14,6 +14,25 @@ data DomEvent a = MkDomEvent (Ptr -> JS_IO a)
 export
 data Dom e a = MkDom (DomNode -> (e -> JS_IO ()) -> JS_IO a)
 
+export
+Functor DomEvent where
+  map f (MkDomEvent de) = MkDomEvent $ \x => f <$> de x
+
+export
+Applicative DomEvent where
+  pure a = MkDomEvent $ \x => pure a
+
+  (<*>) (MkDomEvent f) (MkDomEvent fa) =
+    MkDomEvent $ \x => f x <*> fa x
+
+export
+Monad DomEvent where
+  (>>=) (MkDomEvent fa) f =
+    MkDomEvent $ \x =>
+      do
+        a <- fa x
+        let MkDomEvent g = f a
+        g x
 
 export
 Functor (Dom e) where
@@ -62,6 +81,16 @@ runDom : DomNode -> (e -> JS_IO ()) -> Dom e a -> JS_IO a
 runDom container procE (MkDom x) =
   x container procE
 
+export
+chrootDom : DomPath -> Dom e a -> Dom e (Maybe a)
+chrootDom path ori = MkDom $ \x, y =>
+  case !(solvePath path x) of
+    Nothing => pure Nothing
+    Just z => Just <$> runDom z y ori
+
+export
+applyEvents : (e->i) -> Dom e a -> Dom i a
+applyEvents f ori = MkDom $ \x, y =>  runDom x (y . f) ori
 
 export
 root : DomPath
@@ -86,13 +115,28 @@ domLog s = MkDom $ \_, _=> putStr' s
 
 export
 appendNode : String -> DomPath -> Dom e (Maybe DomPath)
-appendNode tag (MkDomPath path) = MkDom $ \node, _ =>
-    case !(path node) of
+appendNode tag path = MkDom $ \node, _ =>
+    case !(solvePath path node) of
       Nothing => pure Nothing
       Just (MkDomNode n) =>
         do
           p <- appendChild n !(createElement tag)
           pure $ Just $ MkDomPath (\_ => pure $ Just $ MkDomNode p)
+
+export
+clear : DomPath -> Dom e ()
+clear path = MkDom $ \node, _ =>
+    case !(solvePath path node) of
+      Nothing => putStr' "Warning: unsolvable path"
+      Just x => clear' x
+
+
+export
+setValue : String -> DomPath -> Dom e ()
+setValue s path = MkDom $ \node, _ =>
+  case !(solvePath path node) of
+    Nothing => putStr' "Warning: unsolvable path"
+    Just (MkDomNode p) => setVal p s
 
 export
 setText : String -> DomPath -> Dom e ()
@@ -109,4 +153,8 @@ registEvent (MkDomPath path) eventType (MkDomEvent getDomE) = MkDom $ \node, pro
 
 export
 targetValue : DomEvent String
-targetValue = MkDomEvent $ \x => jscall "%0.target.value" (Ptr-> JS_IO String) x
+targetValue = MkDomEvent $ \x => jscall "%0.target.value" (Ptr -> JS_IO String) x
+
+export
+preventDefault : DomEvent ()
+preventDefault = MkDomEvent $ \x => jscall "%0.preventDefault()" (Ptr -> JS_IO ()) x
