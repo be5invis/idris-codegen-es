@@ -31,7 +31,7 @@ data View : Type -> Type where
   AppendNode : View a -> View a -> View a
   MapNode : (a -> Maybe b) -> View a -> View b
   AjaxFormNode : View a -> View (FormEvent a)
-  SimpleContainer : String -> View a -> View a
+  ContainerNode : String -> List (String, Maybe a) -> List (String, String) -> View a -> View a
   FoldNode : Typeable b => b -> View a -> (b -> View a) -> (a->b->(b, Maybe c)) -> Maybe (b->b) -> View c
 
 public export
@@ -55,6 +55,19 @@ setAppState (MkCtx ctx) z = jscall "%0.app = %1" (Ptr -> Ptr -> JS_IO ()) ctx (b
 getAppState : Ctx a b -> JS_IO (AppState a b)
 getAppState (MkCtx ctx) = believe_me <$> jscall "%0.app" ( Ptr -> JS_IO Ptr) ctx
 
+addEvents : DomPath -> List String -> Dom ViewEvent ()
+addEvents p (x::xs) =
+  do
+    registEvent p x (hereEvent $ pure x)
+    addEvents p xs
+addEvents p [] = pure ()
+
+setAttrs : DomPath -> List (String, String) -> Dom e ()
+setAttrs p (x::xs) =
+  do
+    setAttribute p x
+    setAttrs p xs
+setAttrs p [] = pure ()
 
 mutual
 
@@ -65,6 +78,7 @@ mutual
       Just w1' => case u of
                     Nothing => w1'
                     Just u' => u' w1'
+
 
   updateNodeView : View a -> View b -> Dom ViewEvent (View b)
   updateNodeView (TextNode sOld) (TextNode sNew) =
@@ -91,11 +105,15 @@ mutual
     do
       Just v3 <- chrootDom (child 0 root) (applyEvents leftEvent $ updateNodeView v1 v2)
       pure $ AjaxFormNode v3
-  updateNodeView (SimpleContainer t1 v1) vf@(SimpleContainer t2 v2) =
+  updateNodeView (ContainerNode t1 e1 a1 v1) vf@(ContainerNode t2 e2 a2 v2) =
     if t1 == t2 then
       do
-        Just v3 <- chrootDom (child 0 root) $ updateNodeView v1 v2
-        pure $ SimpleContainer t2 v3
+        let c =  child 0 root
+        Just v3 <- chrootDom c (applyEvents leftEvent $ updateNodeView v1 v2)
+        addEvents c $ (map fst e2) \\ (map fst e1)
+        setAttrs c $ a2 \\ a1
+        let old = map (\x => (x, Nothing)) $ (map fst e1) \\ (map fst e2)
+        pure $ ContainerNode t2 (e2 ++ old) a2 v3
       else do
         clear root
         initViewDom vf
@@ -135,10 +153,12 @@ mutual
       registEvent f "submit" (hereEvent $ preventDefault >>= \_=> pure "")
       chrootDom f (applyEvents leftEvent $ initViewDom v)
       pure ()
-  initViewDom (SimpleContainer tag v) =
+  initViewDom (ContainerNode tag events attributes v) =
     do
       Just c <- appendNode tag root
-      chrootDom c (initViewDom v)
+      addEvents c (map fst events)
+      setAttrs c attributes
+      chrootDom c (applyEvents leftEvent $ initViewDom v)
       pure ()
   initViewDom (FoldNode _ v _ _ _ ) = initViewDom v
 
@@ -163,10 +183,12 @@ mutual
     do
       Just (v2, x) <- chrootDom (child 0 root) (applyEvents leftEvent $ updateNodeEvent (p,e) v)
       pure (AjaxFormNode v2, Value <$> x)
-  updateNodeEvent e (SimpleContainer t v) =
+  updateNodeEvent (PathHere, e)  c@(ContainerNode _ evts _ _) =
+      pure (c, join $ lookup e evts)
+  updateNodeEvent (PathLeft p, e) (ContainerNode t evts attrs v) =
     do
-      Just (v2, x) <- chrootDom (child 0 root) $ updateNodeEvent e v
-      pure (SimpleContainer t v2, x)
+      Just (v2, x) <- chrootDom (child 0 root) (applyEvents leftEvent $ updateNodeEvent (p,e) v)
+      pure (ContainerNode t evts attrs v2, x)
   updateNodeEvent e (FoldNode s v vf f _) =
     do
       (v2, x) <- updateNodeEvent e v
@@ -269,4 +291,8 @@ foldp x y f z =
 
 export
 div : View a -> View a
-div x = SimpleContainer "div" x
+div x = ContainerNode "div" [] [] x
+
+export
+button : String -> a -> View a
+button lbl val = ContainerNode "button" [("click", Just val)] [] $ text lbl

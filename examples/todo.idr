@@ -10,13 +10,12 @@ upd : TodoAction -> List String -> (List String, ASync TodoAction)
 upd (TodoAdd x) y = (y ++ [x], never)
 upd (TodoRemove i) y =  (take i y  ++ drop (i+1) y, never)
 
-vw_todos : View (List (Nat, String)) TodoAction
-vw_todos = listView $ div $ (dynbutton .$. (\(i, _) => (TodoRemove i,"x"))) <+> (dyntext .$. snd)
+vw_todos : List (Nat, String) -> View TodoAction
+vw_todos l = concat $ map (\(i,t)=> button "x" (TodoRemove i) ++ text t) l
 
-vw : View (List String) TodoAction
-vw =
-  div $ ii (TodoAdd <$> (buildForm $ textForm))
-        <+> vw_todos .$. z
+vw : List String -> View TodoAction
+vw l =
+  div (TodoAdd <$> buildForm' textForm) ++ vw_todos (z l)
   where
     z: List String -> List (Nat, String)
     z x = zip [0..length x] x
@@ -28,6 +27,6 @@ page = MkApp
         vw
         upd
 
-main : JSIO ()
+main : JS_IO ()
 main = do
   runApp page

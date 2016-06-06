@@ -68,7 +68,7 @@ textForm =
 FormState : Type -> Type
 FormState a = (a, Bool)
 
-public
+export
 data Form : Type -> Type where
   MkForm : a -> View (FormState a) a -> (a -> MError b) -> (b -> a) -> Form b
 
@@ -90,7 +90,7 @@ renderError out (x, True) =
     Right _   => neutral
 renderError _ _ = neutral
 
-public
+export
 buildForm : Form a -> View a a
 buildForm (MkForm z vw out inp) =
   let vw_sub = form FormSubmitVal $ (FormSetState <$> vw)
@@ -104,7 +104,7 @@ buildForm (MkForm z vw out inp) =
 
 
 -------- form primitives --------
-public
+export
 textForm : Form String
 textForm =
   MkForm
@@ -118,11 +118,11 @@ formMap : (b->a, a->MError b) -> Form a -> Form b
 formMap (f,g) (MkForm z vw out inp) =
   MkForm z vw (\x => out x >>= g) (inp . f)
 
-public
+export
 formMap' : (b->a, a->b) -> Form a -> Form b
 formMap' (f,g) form = formMap (f, \x => Right $ g x) form
 
-public
+export
 selectForm : Vect (S n) String -> Form (Fin (S n))
 selectForm lst =
   MkForm
@@ -135,7 +135,7 @@ selectForm lst =
     procEvents (FS x) = Right x
 
 
-public
+export
 combine : Form k -> (a->k) -> (k->Form a) -> Form a
 combine (MkForm kZ selVw out inp) getK kForm =
   MkForm
@@ -165,7 +165,7 @@ combine (MkForm kZ selVw out inp) getK kForm =
 
 
 
-public
+export
 tupleForm : Form a -> Form b -> Form (a,b)
 tupleForm (MkForm xz xvw) (MkForm yz yvw) =
   MkForm
@@ -187,16 +187,16 @@ tupleForm (MkForm xz xvw) (MkForm yz yvw) =
     updInp u (x,y,_) = (x,y, Just u)
 
 
-public
+export
 vtrans : {c : Type} -> ({a:Type} -> {b:Type} -> View a b -> View a b) -> Form c -> Form c
 vtrans f (MkForm x v o i) = MkForm x (f v) o i
 
 -------- utils ------------
-public
+export
 integerForm : Form Integer
 integerForm = formMap' (cast, cast) $ textForm
 
-public
+export
 natForm : Form Nat
 natForm =
   formMap (Just . cast, i2n) integerForm

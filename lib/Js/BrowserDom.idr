@@ -159,6 +159,20 @@ registEvent (MkDomPath path) eventType (MkDomEvent getDomE) = MkDom $ \node, pro
     Just (MkDomNode n) => addEventListener n eventType (\x => getDomE x >>= proc  )
 
 export
+removeAttribute : DomPath -> String -> Dom e ()
+removeAttribute (MkDomPath path) key = MkDom $ \node, proc =>
+  case !(path node) of
+    Nothing => pure ()
+    Just (MkDomNode n) => removeAttr n key
+
+export
+setAttribute : DomPath -> (String, String) -> Dom e ()
+setAttribute (MkDomPath path) attr = MkDom $ \node, proc =>
+  case !(path node) of
+    Nothing => pure ()
+    Just (MkDomNode n) => setAttr n attr
+
+export
 targetValue : DomEvent String
 targetValue = MkDomEvent $ \x => jscall "%0.target.value" (Ptr -> JS_IO String) x
 

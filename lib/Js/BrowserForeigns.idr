@@ -39,11 +39,11 @@ replaceChild parent new old = jscall "%0.replaceChild(%1, %2)" (Ptr -> Ptr -> Pt
 createElement : String -> JS_IO Ptr
 createElement s = jscall "document.createElement(%0)" (String -> JS_IO Ptr) s
 
-setAttribute : Ptr -> (String, String) -> JS_IO ()
-setAttribute node (k,v) = jscall "%0.setAttribute(%1, %2)" (Ptr -> String -> String -> JS_IO ()) node k v
+setAttr : Ptr -> (String, String) -> JS_IO ()
+setAttr node (k,v) = jscall "%0.setAttribute(%1, %2)" (Ptr -> String -> String -> JS_IO ()) node k v
 
-removeAttribute : Ptr -> String -> JS_IO ()
-removeAttribute node k = jscall "%0.removeAttribute(%1)" (Ptr -> String -> JS_IO ()) node k
+removeAttr : Ptr -> String -> JS_IO ()
+removeAttr node k = jscall "%0.removeAttribute(%1)" (Ptr -> String -> JS_IO ()) node k
 
 addEventListener : Ptr -> String -> (Ptr -> JS_IO ()) -> JS_IO ()
 addEventListener node evt action =
@@ -66,7 +66,6 @@ setClass node val = jscall "%0.className = %1" (Ptr->String->JS_IO ()) node val
 setSelected : Ptr -> Bool -> JS_IO ()
 setSelected node True = jscall "%0.selected = true" (Ptr->JS_IO ()) node
 setSelected node False = jscall "%0.selected = false" (Ptr->JS_IO ()) node
-
 
 
 ------ Network -------
