@@ -1,6 +1,6 @@
 # idrisjs
-Js ffis for idris.
-Due to some dificulties with the default js backend this lib uses its own js backend.
+Js libraries for idris.
+Due to some dificulties with the default js backend this lib uses its own js backend. This backend is compatible with the default js IO type JS_IO, hence they are interchangeable. The test t8.idr show the troubles with the idris default backend.
 
 ###To build
 ```shell

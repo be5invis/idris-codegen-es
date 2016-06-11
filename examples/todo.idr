@@ -11,7 +11,7 @@ upd (TodoAdd x) y = (y ++ [x], never)
 upd (TodoRemove i) y =  (take i y  ++ drop (i+1) y, never)
 
 vw_todos : List (Nat, String) -> View TodoAction
-vw_todos l = concat $ map (\(i,t)=> button "x" (TodoRemove i) ++ text t) l
+vw_todos l = concat $ map (\(i,t)=> div $ button "x" (TodoRemove i) ++ text t) l
 
 vw : List String -> View TodoAction
 vw l =

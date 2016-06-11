@@ -27,13 +27,19 @@ export
 data Form : Type -> Type where
   MkForm : Typeable a => MError a -> (MError a -> View (MError a)) -> Form a
 
+getFormZ : Form a -> MError a
+getFormZ (MkForm x _) = x
+
+getFormV : Form a -> (MError a -> View (MError a))
+getFormV (MkForm _ x) = x
+
 public export
 data FormUpdate a = ResetForm | FormSetVal a
 
 export
 buildForm : Maybe (FormUpdate a) -> Form a -> View a
 buildForm {a} x (MkForm s0 f) =
-  foldp
+  foldv
     s0
     vw
     update
@@ -62,56 +68,56 @@ textForm =
   where
     vw (Right x) = Right <$> (textinput $ Just x)
     vw (Left _) = Right <$> textinput'
+
+export
+selectForm : Vect n String -> Form (Fin n)
+selectForm lst =
+  MkForm
+    (Left [])
+    (\x => vmap <$> vw x)
+  where
+    vmap : Fin (S m) -> Either (List String) (Fin m)
+    vmap FZ = Left ["Not filled"]
+    vmap (FS z) = Right z
+    vw (Right x) = selectInput (Just $ FS x) (""::lst)
+    vw (Left _) =  selectInput' (""::lst)
 {-
-
-
-FormState : Type -> Type
-FormState a = (a, Bool)
-
 export
-data Form : Type -> Type where
-  MkForm : a -> View (FormState a) a -> (a -> MError b) -> (b -> a) -> Form b
+formBind : (Typeable a, Typeable k) => Form k -> (f : k->Type)
+                -> ((x:k) -> Form (f x)) -> ((x:k) -> f x -> a) -> (a->(x:k ** f x)) -> Form a
+formBind {a} {k} (MkForm kZ selVw) f kForm kCons getK =
+  MkForm
+    (kZ >>= makeStart)
+    vw
+  where
+    FoldState : Type
+    FoldState = MError (k, MError a)
+    makeStart x =
+      (\w => kCons x w) <$> getFormZ (kForm x)
+    subV : k -> MError a -> View FoldState
+    subV x (Left z) =
+      let (MkForm s v) = kForm x
+      (\w=> Right (x**w)) <$> (getFormV $ kForm x) y
+    vK : MError k -> View FoldState
+    vK x = (\y => (y ** Left [])) <$$> selVw x
+    foldV : FoldState -> View FoldState
+    foldV (Left x) = vK (Left x)
+    foldV (Right (x, y)) = vK (Right x) ++ subV x y
+    upd : FoldState -> FoldState -> (FoldState, Maybe a)
+    upd x y =
+      ( x
+      , case x of
+            Right (z ** Right w) => Just $ kCons z w
+            _ => Nothing
+      )
+    theFold : Maybe (FoldState->FoldState) -> View a
+    theFold = foldv ((\x=>(x ** Left [])) <$> kZ) foldV upd
+    vw (Left _) = theFold Nothing
+    vw (Right x) = theFold $ Just (\_=> let (w ** y) = getK x in Right (w** Right y))
 
-data FormEvent a = FormSetState a
-                 | FormSubmitVal
-
-
-form_update : a -> (a-> MError b) -> FormEvent a -> FormState a -> (FormState a, Maybe b)
-form_update w out (FormSubmitVal) (x, _) =
-  case out x of
-    Right y => ((w, False), Just y)
-    Left e  => ((x, True), Nothing)
-form_update _ _ (FormSetState x) (_, s) = ((x, s), Nothing)
-
-renderError : (a -> MError b) -> FormState a -> View Void c
-renderError out (x, True) =
-  case out x of
-    Left errs => concat $ map (div . t) errs
-    Right _   => neutral
-renderError _ _ = neutral
-
-export
-buildForm : Form a -> View a a
-buildForm (MkForm z vw out inp) =
-  let vw_sub = form FormSubmitVal $ (FormSetState <$> vw)
-                <+> (dynView $ renderError out)
-                <+> submitButton "Submit"
-  in foldView
-        (form_update z out)
-        (\y, _ => (inp y, False) )
-        (z, False)
-        vw_sub
 
 
 -------- form primitives --------
-export
-textForm : Form String
-textForm =
-  MkForm
-    ""
-    (textinput .$. fst)
-    Right
-    id
 
 public
 formMap : (b->a, a->MError b) -> Form a -> Form b
@@ -122,17 +128,6 @@ export
 formMap' : (b->a, a->b) -> Form a -> Form b
 formMap' (f,g) form = formMap (f, \x => Right $ g x) form
 
-export
-selectForm : Vect (S n) String -> Form (Fin (S n))
-selectForm lst =
-  MkForm
-    FZ
-    (selectinput (" "::lst) .$. fst)
-    procEvents
-    FS
-  where
-    procEvents FZ = Left ["No value selected"]
-    procEvents (FS x) = Right x
 
 
 export

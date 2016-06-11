@@ -33,6 +33,7 @@ data View : Type -> Type where
   AjaxFormNode : View a -> View (FormEvent a)
   ContainerNode : String -> List (String, Maybe a) -> List (String, String) -> View a -> View a
   FoldNode : Typeable b => b -> View a -> (b -> View a) -> (a->b->(b, Maybe c)) -> Maybe (b->b) -> View c
+  SelectNode : Maybe (Fin n) -> Vect n String -> View (Fin n)
 
 public export
 record App a b where
@@ -89,11 +90,11 @@ mutual
           pure $ TextNode sNew
   updateNodeView (InputNode _) (InputNode force) =
     case force of
-      Nothing => pure $ InputNode force
+      Nothing => pure $ InputNode Nothing
       Just s =>
         do
           setValue s (child 0 root)
-          pure $ InputNode force
+          pure $ InputNode Nothing
   updateNodeView (AppendNode x y) (AppendNode z w) =
     do
       Just v1 <- chrootDom (child 0 root) (applyEvents leftEvent $ updateNodeView x z)
@@ -123,11 +124,31 @@ mutual
       let s3 = updateFoldNodeState u s1 s2
       v2 <- updateNodeView v1 (vf s3)
       pure $ FoldNode s3 v2 vf f Nothing
+  updateNodeView (SelectNode _ o1) vf@(SelectNode force o2) =
+    if toList o1 == toList o2 then
+      case force of
+        Nothing => pure vf
+        Just x =>
+          do
+            setValue (cast $ finToInteger x) (child 0 root)
+            pure vf
+      else
+        do
+          clear root
+          initViewDom vf
+          pure vf
   updateNodeView _ v =
     do
       clear root
       initViewDom v
       pure v
+
+  addOption : DomPath -> (Fin n, String) -> Dom e ()
+  addOption p (v, l) =
+    do
+      Just o <- appendNode "option" p
+      setValue (cast $ finToInteger v) o
+      setText l o
 
   initViewDom : View c -> Dom ViewEvent ()
   initViewDom (TextNode s) =
@@ -161,6 +182,16 @@ mutual
       chrootDom c (applyEvents leftEvent $ initViewDom v)
       pure ()
   initViewDom (FoldNode _ v _ _ _ ) = initViewDom v
+  initViewDom (SelectNode force options) =
+    do
+      Just s <- appendNode "select" root
+      let options' = Data.Vect.zip range options
+      sequence $ map (\x=> addOption s x) options'
+      registEvent s "change" (hereEvent targetValue)
+      case force of
+        Nothing => pure ()
+        Just x => setValue (cast $ finToInteger x) s
+
 
   updateNodeEvent : ViewEvent -> View a -> Dom ViewEvent (View a, Maybe a)
   updateNodeEvent (PathHere, e) (InputNode f) =
@@ -200,6 +231,9 @@ mutual
             let (s2, z) = f y s
             v3 <- updateNodeView v (vf s2)
             pure (FoldNode s2 v3 vf f Nothing, z)
+  updateNodeEvent (PathHere, e) (SelectNode _ options) =
+    let i = the Integer $ cast e
+    in pure (SelectNode Nothing options, integerToFin i _)
 
   updateAppVal : Ctx a b -> a -> JS_IO ()
   updateAppVal ctx x =
@@ -261,6 +295,10 @@ Monoid (View t) where
 -------- Primitives --------
 
 export
+mapFilter : (a -> Maybe b) -> View a -> View b
+mapFilter f x = MapNode f x
+
+export
 text : String -> View a
 text s = TextNode s
 
@@ -272,7 +310,7 @@ export
 textinput' : View String
 textinput' = textinput Nothing
 
-infixr  7 ++
+infixr 7 ++
 export
 (++) : View a -> View a -> View a
 (++) x y = AppendNode x y
@@ -283,8 +321,8 @@ ajaxForm : View a -> View (FormEvent a)
 ajaxForm x = AjaxFormNode x
 
 export
-foldp : Typeable b => b -> (b->View a) -> (a->b->(b, Maybe c)) -> Maybe (b->b) -> View c
-foldp x y f z =
+foldv : Typeable b => b -> (b->View a) -> (a->b->(b, Maybe c)) -> Maybe (b->b) -> View c
+foldv x y f z =
   case z of
     Just w => FoldNode (w x) (y $ w x) y f z
     Nothing => FoldNode x (y x) y f z
@@ -296,3 +334,11 @@ div x = ContainerNode "div" [] [] x
 export
 button : String -> a -> View a
 button lbl val = ContainerNode "button" [("click", Just val)] [] $ text lbl
+
+export
+selectInput : Maybe (Fin n) -> Vect n String -> View (Fin n)
+selectInput f o = SelectNode f o
+
+export
+selectInput' : Vect n String -> View (Fin n)
+selectInput' o = selectInput Nothing o
