@@ -1,6 +1,6 @@
 # idrisjs
 Js libraries for idris.
-Due to some dificulties with the default js backend this lib uses its own js backend. This backend is compatible with the default js IO type JS_IO, hence they are interchangeable. The test t8.idr show the troubles with the idris default backend.
+Due to some dificulties with the default js backend this lib uses its own js backend. This backend is compatible with the default js IO type JS_IO, hence they are interchangeable. The test t8.idr shows the troubles with the idris default backend.
 
 ###To build
 ```shell
@@ -22,3 +22,4 @@ The only documentation available right now is the idris generated doc
 cd lib
 idris --mkdoc js.ipkg
 ```
+Open a github issue to discuss anything related to this project. 
