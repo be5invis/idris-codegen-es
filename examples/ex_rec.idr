@@ -7,37 +7,47 @@ data TstExp = Pos Nat
             | Neg Nat
             | Plus TstExp TstExp
 
+Typeable TstExp where
+  getTypeRep = %runElab deriveTypeable
+
 Show TstExp where
   show (Pos x) = show x
   show (Neg x) = "(-" ++ show x ++ ")"
   show (Plus x y) = "(" ++ show x ++ " + " ++ show y ++ ")"
 
-data TstExpForms = NumberForm | PlusForm
 
-indentV : Nat -> View a b -> View a b
-indentV i x = div $ t (pack $ the (List Char) $ replicate i '-') <+> x
+indentV : Nat -> View a -> View a
+indentV i x = div $ text (pack $ the (List Char) $ replicate i '-') ++ x
 
 indentF : Nat -> Form a -> Form a
 indentF i = vtrans (indentV i)
 
 tstForm : Nat -> Lazy (Form TstExp)
 tstForm i =
-  indentF i $ combine
+  indentF i $ formBind
     (selectForm ["Pos", "Neg", "Plus"])
-    theNat
+    f
     theForm
+    cons
+    getK
   where
-    theNat (Pos _) = 0
-    theNat (Neg _) = 1
-    theNat (Plus_) = 2
-    theForm FZ = formMap' (\(Pos x) => x , Pos) $ natForm
-    theForm (FS FZ) = formMap' (\(Neg x) => x , Neg) natForm
-    theForm _ = formMap' (\(Plus x y) => (x,y) , uncurry Plus) $ tupleForm (tstForm $ i+1) (tstForm $ i+1)
+    f : Fin 3 -> Type
+    f FZ = Nat
+    f (FS FZ) = Nat
+    f (FS (FS FZ)) = (TstExp, TstExp)
+    theForm FZ = natForm
+    theForm (FS FZ) = natForm
+    theForm (FS (FS FZ)) = tupleForm (tstForm $ i+1) (tstForm $ i+1)
+    cons FZ x = Pos x
+    cons (FS FZ) x = Neg x
+    cons (FS (FS FZ)) (x,y) = Plus x y
+    getK (Pos x) = (0 ** x)
+    getK (Neg x) = (1 ** x)
+    getK (Plus x y) = (2 ** (x,y))
 
-
-vw : View TstExp TstExp
-vw = div $    (buildForm $ tstForm 0)
-           <+>  div (dyntext .$. show)
+vw : TstExp -> View TstExp
+vw x = div $ (buildForm (Just $ FormSetVal x) $ addSubmit "Submit" $ tstForm 0)
+           ++ div (text $ show x)
 
 
 page : App TstExp TstExp
@@ -46,6 +56,6 @@ page = MkApp
         vw
         (\x, y => (x, never))
 
-main : JSIO ()
+main : JS_IO ()
 main = do
   runApp page

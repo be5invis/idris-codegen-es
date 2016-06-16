@@ -81,7 +81,8 @@ selectForm lst =
     vmap (FS z) = Right z
     vw (Right x) = selectInput (Just $ FS x) (""::lst)
     vw (Left _) =  selectInput' (""::lst)
-{-
+
+
 export
 formBind : (Typeable a, Typeable k) => Form k -> (f : k->Type)
                 -> ((x:k) -> Form (f x)) -> ((x:k) -> f x -> a) -> (a->(x:k ** f x)) -> Form a
@@ -95,98 +96,63 @@ formBind {a} {k} (MkForm kZ selVw) f kForm kCons getK =
     makeStart x =
       (\w => kCons x w) <$> getFormZ (kForm x)
     subV : k -> MError a -> View FoldState
-    subV x (Left z) =
-      let (MkForm s v) = kForm x
-      (\w=> Right (x**w)) <$> (getFormV $ kForm x) y
+    subV x (Left y) = (\w => Right (x, kCons x <$> w)) <$> (getFormV (kForm x) $ Left y)
+    subV _ (Right h) =
+      let (x ** z) = getK h
+      in (\w => Right (x, kCons x <$> w)) <$> (getFormV (kForm x) $ Right z)
     vK : MError k -> View FoldState
-    vK x = (\y => (y ** Left [])) <$$> selVw x
+    vK x = (\y => (y, Left [])) <$$> selVw x
     foldV : FoldState -> View FoldState
     foldV (Left x) = vK (Left x)
     foldV (Right (x, y)) = vK (Right x) ++ subV x y
-    upd : FoldState -> FoldState -> (FoldState, Maybe a)
+    upd : FoldState -> FoldState -> (FoldState, Maybe (MError a))
     upd x y =
       ( x
       , case x of
-            Right (z ** Right w) => Just $ kCons z w
-            _ => Nothing
+            Right (_, Right w) => Just $ Right w
+            Left e => Just $ Left e
+            Right (_, Left e) => Just $ Left e
       )
-    theFold : Maybe (FoldState->FoldState) -> View a
-    theFold = foldv ((\x=>(x ** Left [])) <$> kZ) foldV upd
+    theFold : Maybe (FoldState->FoldState) -> View (MError a)
+    theFold = foldv ((\x=>(x, Left [])) <$> kZ) foldV upd
+    vw : MError a -> View (MError a)
     vw (Left _) = theFold Nothing
-    vw (Right x) = theFold $ Just (\_=> let (w ** y) = getK x in Right (w** Right y))
-
-
-
--------- form primitives --------
-
-public
-formMap : (b->a, a->MError b) -> Form a -> Form b
-formMap (f,g) (MkForm z vw out inp) =
-  MkForm z vw (\x => out x >>= g) (inp . f)
-
-export
-formMap' : (b->a, a->b) -> Form a -> Form b
-formMap' (f,g) form = formMap (f, \x => Right $ g x) form
-
-
-
-export
-combine : Form k -> (a->k) -> (k->Form a) -> Form a
-combine (MkForm kZ selVw out inp) getK kForm =
-  MkForm
-    resetState
-    (dynView combineAForm `chainView` (selVw .$. ((fst<$>) . fst))  )
-  --MkForm (kZ >>= getZ) ((dynView combineAForm) `chainView` (selVw .$. (getK<$>) ) )
-  where
-    resetState : MError (k, MError a)
-    resetState =
-      case kZ of
-        (Left e) => Left e
-        (Right x) => Right (out x, let MkForm z _ o _ = kForm (out x) in o z)
-
-    combineAForm : Either (MError (k, MError a)) (MError k) -> View Void (MError k, MError a)
-    combineAForm (Left s) = neutral
-    combineAForm (Right (k ,Left e)) = let (MkForm _ vw _ _) = kForm x in ii ( \x =>  <$> vw)
-    combineAForm (Right (Right x)) =  let (MkForm _ vw) = kForm (getK x) in static vw (UpdateValue x)
-    --combineAForm (Left (UpdateValue x) ) =  let (MkForm _ vw) = kForm (getK x) in static vw (UpdateValue x)
-    --combineAForm (Left ResetForm ) = trace "reseted" $ t "reseted"
-    -- let (MkForm _ vw) = kForm (getK x) in static vw (UpdateValue x)
-
-    --combineAForm _ = neutral
-
---foldView : (i -> st -> (st, Maybe b)) -> (a -> st -> st) -> st -> View st i -> View a b
---MkForm : MError a -> View (FormUpdate a) (MError a) -> Form a
-
-
+    vw (Right x) =
+      let (w ** z) = getK x
+      in theFold $ Just (\_=> Right (w, Right x))
 
 
 export
 tupleForm : Form a -> Form b -> Form (a,b)
-tupleForm (MkForm xz xvw) (MkForm yz yvw) =
+tupleForm {a} {b} (MkForm z1 v1) (MkForm z2 v2) =
   MkForm
-    (joinMErrors xz yz)
-    (foldView
-      updEvt
-      updInp
-      (xz,yz,Nothing)
-      ((Left <$> xvw .?. ((fst <$>)<$>) . snd . snd) <+> (Right <$> yvw .?. ((snd<$>)<$>) . snd . snd ))
-    )
+    (joinMErrors MkPair z1 z2)
+    vw
   where
-    updEvt : Either (MError a) (MError b) -> (MError a, MError b, Maybe (FormUpdate (a,b)))
-              -> ((MError a, MError b, Maybe (FormUpdate (a,b))), Maybe (MError (a,b)))
-    updEvt (Left x) (_, y, _) = ((x, y, Nothing), Just $ joinErrors x y)
-    updEvt (Right y) (x, _, _) = ((x, y, Nothing), Just $ joinErrors x y)
-
-    updInp : FormUpdate (a,b) -> (MError a, MError b, Maybe (FormUpdate (a,b)))
-              -> (MError a, MError b, Maybe (FormUpdate (a,b)))
-    updInp u (x,y,_) = (x,y, Just u)
-
+    FoldState : Type
+    FoldState = (MError a, MError b)
+    foldVw : FoldState -> View (Either (MError a) (MError b))
+    foldVw (x, y) = (Left <$> v1 x) ++ (Right <$> v2 y)
+    upd : Either (MError a) (MError b) -> FoldState -> (FoldState, Maybe (MError (a,b)))
+    upd (Left x) (_,z) = ((x, z), Just $ joinMErrors MkPair x z)
+    upd (Right x) (z,_) = ((z, x), Just $ joinMErrors MkPair z x)
+    theFold : Maybe (FoldState->FoldState) -> View (MError (a,b))
+    theFold = foldv (z1, z2) foldVw upd
+    vw : MError (a,b) -> View (MError (a,b))
+    vw (Left _) = theFold Nothing
+    vw (Right (x,y)) = theFold (Just $ \_ => (Right x, Right y))
 
 export
-vtrans : {c : Type} -> ({a:Type} -> {b:Type} -> View a b -> View a b) -> Form c -> Form c
-vtrans f (MkForm x v o i) = MkForm x (f v) o i
+formMap : Typeable b => (b->a, a->MError b) -> Form a -> Form b
+formMap (f,g) (MkForm z v) =
+  MkForm (z >>= g) (\x => g' <$> v (f <$> x))
+  where
+    g' x = x >>= g
 
--------- utils ------------
+export
+formMap' : Typeable b => (b->a, a->b) -> Form a -> Form b
+formMap' (f,g) form = formMap (f, \x => Right $ g x) form
+
 export
 integerForm : Form Integer
 integerForm = formMap' (cast, cast) $ textForm
@@ -194,7 +160,14 @@ integerForm = formMap' (cast, cast) $ textForm
 export
 natForm : Form Nat
 natForm =
-  formMap (Just . cast, i2n) integerForm
+  formMap (cast, i2n) integerForm
   where
     i2n x = if x < 0 then Left [show x ++ "is not a Nat"] else Right $ fromInteger x
--}
+
+export
+vtrans : {b : Type} -> ({a:Type} -> View a -> View a) -> Form b -> Form b
+vtrans f (MkForm k v) = MkForm k (\x => f $ v x)
+
+export
+addSubmit : String -> Form a -> Form a
+addSubmit x y = vtrans (\z => z ++ div (submitButton x)) y

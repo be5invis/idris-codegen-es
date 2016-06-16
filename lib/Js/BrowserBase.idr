@@ -24,7 +24,7 @@ rightEvent (p, s) = (PathRight p, s)
 public export
 data FormEvent a = Value a | Submit
 
-export
+public export
 data View : Type -> Type where
   TextNode : String -> View a
   InputNode : Maybe String -> View String
@@ -229,7 +229,7 @@ mutual
         Just y =>
           do
             let (s2, z) = f y s
-            v3 <- updateNodeView v (vf s2)
+            v3 <- updateNodeView v2 (vf s2)
             pure (FoldNode s2 v3 vf f Nothing, z)
   updateNodeEvent (PathHere, e) (SelectNode _ options) =
     let i = the Integer $ cast e
@@ -315,30 +315,9 @@ export
 (++) : View a -> View a -> View a
 (++) x y = AppendNode x y
 
-
-export
-ajaxForm : View a -> View (FormEvent a)
-ajaxForm x = AjaxFormNode x
-
 export
 foldv : Typeable b => b -> (b->View a) -> (a->b->(b, Maybe c)) -> Maybe (b->b) -> View c
 foldv x y f z =
   case z of
     Just w => FoldNode (w x) (y $ w x) y f z
     Nothing => FoldNode x (y x) y f z
-
-export
-div : View a -> View a
-div x = ContainerNode "div" [] [] x
-
-export
-button : String -> a -> View a
-button lbl val = ContainerNode "button" [("click", Just val)] [] $ text lbl
-
-export
-selectInput : Maybe (Fin n) -> Vect n String -> View (Fin n)
-selectInput f o = SelectNode f o
-
-export
-selectInput' : Vect n String -> View (Fin n)
-selectInput' o = selectInput Nothing o
