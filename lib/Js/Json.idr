@@ -147,19 +147,24 @@ interface FromJson a where
 export
 interface (ToJson a, FromJson a) => BothJson a where
 
+export
 (ToJson a, FromJson a) => BothJson a where
 
 
+export
 FromJson String where
   fromJson (JsonString s) = Right s
   fromJson o = Left $ "fromJson: " ++ show o ++ " is not a String"
 
+export
 ToJson String where
   toJson s = JsonString s
 
+export
 FromJson JsonValue where
   fromJson = Right
 
+export
 ToJson JsonValue where
   toJson = id
 

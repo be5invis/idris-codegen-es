@@ -13,6 +13,22 @@ div : View a -> View a
 div x = ContainerNode "div" [] [] x
 
 export
+text : String -> View a
+text s = TextNode s
+
+export
+t : String -> View a
+t = text
+
+export
+textinput : Maybe String -> View String
+textinput x = InputNode x
+
+export
+textinput' : View String
+textinput' = textinput Nothing
+
+export
 button : String -> a -> View a
 button lbl val = ContainerNode "button" [("click", Just val)] [] $ text lbl
 

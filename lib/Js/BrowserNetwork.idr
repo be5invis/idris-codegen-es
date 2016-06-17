@@ -11,7 +11,7 @@ export
 httpPost : String -> String -> ASync String
 httpPost url body = MkASync $ httpPost_raw url body
 
-export
+public export
 ServiceTy : Maybe Service -> Type
 ServiceTy Nothing = (Void -> ASync (Either String Void))
 ServiceTy (Just (MkService _ a b _)) = (a -> ASync b)
@@ -25,7 +25,7 @@ runServ (Just (MkService s _ _ (_, enc, dec, _)))=
       case dec x of
         Right z => z
 
-export
+public export
 CallServTy : List Service -> String -> Type
 CallServTy xs y = ServiceTy $ getServ y xs
 

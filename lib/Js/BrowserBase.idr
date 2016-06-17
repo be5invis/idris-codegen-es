@@ -298,18 +298,6 @@ export
 mapFilter : (a -> Maybe b) -> View a -> View b
 mapFilter f x = MapNode f x
 
-export
-text : String -> View a
-text s = TextNode s
-
-export
-textinput : Maybe String -> View String
-textinput x = InputNode x
-
-export
-textinput' : View String
-textinput' = textinput Nothing
-
 infixr 7 ++
 export
 (++) : View a -> View a -> View a
