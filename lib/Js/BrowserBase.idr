@@ -24,7 +24,7 @@ rightEvent (p, s) = (PathRight p, s)
 public export
 data FormEvent a = Value a | Submit
 
-public export
+export
 data View : Type -> Type where
   TextNode : String -> View a
   InputNode : Maybe String -> View String
@@ -34,55 +34,46 @@ data View : Type -> Type where
   ContainerNode : String -> List (String, Maybe a) -> List (String, String) -> View a -> View a
   FoldNode : Typeable b => b -> View a -> (b -> View a) -> (a->b->(b, Maybe c)) -> Maybe (b->b) -> View c
   SelectNode : Maybe (Fin n) -> Vect n String -> View (Fin n)
+  UniqIdNode : (Int->View a) -> Maybe (Int, View a) -> View a
 
 
 public export
-data App : Type -> Type where
-  MkApp : (b:Type) ->
-          (f: b->Type) ->
-          b ->
-          ((x:b) -> View (f x)) ->
-          ((x:b) -> f x -> (b, ASync a)) ->
-          (b -> a -> (b, ASync a)) ->
-          App a
+data App : (a:Type) -> (a->Type) -> Type -> Type where
+  MkApp : {a:Type} ->
+          {f: a->Type} ->
+          {b: Type} ->
+          a ->
+          ((x:a) -> View (f x)) ->
+          ((x:a) -> f x -> (a, ASync b)) ->
+          (a -> b -> (a, ASync b)) ->
+          App a f b
 
-{-
 public export
-record App a where
-  constructor MkApp
-  state : b
-  render : b -> View a
-  update : a -> b -> (b, ASync a)
--}
+InputType : App a b c -> Type
+InputType {b} (MkApp x _ _ _) = b x
+
+export
+stepAppASync : (App a f b) -> b -> (App a f b, ASync b)
+stepAppASync (MkApp x1 x2 x3 x4) y =
+  let (ns, async) = x4 x1 y
+  in (MkApp ns x2 x3 x4, async)
+
+export
+stepAppInput : (p: App a f b) -> InputType p -> (App a f b, ASync b)
+stepAppInput (MkApp x1 x2 x3 x4) y =
+  let (ns, async) = x3 x1 y
+  in (MkApp ns x2 x3 x4, async)
+
+export
+renderApp : (p: App a f b) -> View (InputType p)
+renderApp (MkApp s r _ _) = r s
 
 public export
 data AppState : (b:Type) -> (b->Type) -> Type -> Type where
-  MkAppState : (b:Type) ->
-               (f: b->Type) ->
-               (y:b) ->
-               ((x:b) -> View (f x)) ->
-               ((x:b) -> f x -> (b, ASync a)) ->
-               (b -> a -> (b, ASync a)) ->
-               (View (f y)) ->
+  MkAppState : (p: App b f a) ->
+               (View (InputType p)) ->
                DomNode ->
                AppState b f a
-
-InputType : AppState a b c -> Type
-InputType (MkAppState a b x3 x4 x5 x6 x7 x8) = b x3
-
-container : AppState a b c -> DomNode
-container (MkAppState a b x3 x4 x5 x6 x7 x8) = x8
-
-lastView : (x : AppState a b c) -> View (InputType x)
-lastView (MkAppState a b x3 x4 x5 x6 x7 x8) = x7
-
-{-
-record AppState a b where
-  constructor MkAppState
-  theApp : App a b
-  lastView : View a
-  container : DomNode
--}
 
 data Ctx : (b:Type) -> (b->Type) -> Type -> Type where
   MkCtx : Ptr -> Ctx a b c
@@ -174,6 +165,10 @@ mutual
           clear root
           initViewDom vf
           pure vf
+  updateNodeView (UniqIdNode _ (Just (id,vOld))) (UniqIdNode r _) =
+    do
+      vNew <- updateNodeView vOld (r id)
+      pure $ UniqIdNode r (Just (id, vNew))
   updateNodeView _ v =
     do
       clear root
@@ -275,26 +270,26 @@ mutual
   updateAppVal : Ctx a b c -> c -> JS_IO ()
   updateAppVal ctx z =
     do
-      (MkAppState x1 x2 x3 x4 x5 x6 x7 x8) <- getAppState ctx
-      let (newS, async) = x6 x3 z
-      let vNew = x4 newS
-      finalView <- runDom x8 (updateApp ctx) (updateNodeView x7 vNew)
-      setAppState ctx (MkAppState x1 x2 newS x4 x5 x6 finalView x8)
+      (MkAppState app lastV container) <- getAppState ctx
+      let (newApp, async) = stepAppASync app z
+      let vNew = renderApp newApp
+      finalView <- runDom container (updateApp ctx) (updateNodeView lastV vNew)
+      setAppState ctx (MkAppState newApp finalView container)
       setASync (updateAppVal ctx) async
 
   updateApp : Ctx a b c -> ViewEvent -> JS_IO ()
   updateApp ctx e =
     do
-      (MkAppState x1 x2 x3 x4 x5 x6 x7 x8) <- getAppState ctx
-      (n2, mVal) <- runDom x8 (updateApp ctx) (updateNodeEvent e x7)
+      (MkAppState app lastV container) <- getAppState ctx
+      (n2, mVal) <- runDom container (updateApp ctx) (updateNodeEvent e lastV)
       case mVal of
-        Nothing => setAppState ctx (MkAppState x1 x2 x3 x4 x5 x6 n2 x8)
+        Nothing => setAppState ctx (MkAppState app n2 container)
         Just z =>
           do
-            let (newS, async) = x5 x3 z
-            let vNew = x4 newS
-            finalView <- runDom x8 (updateApp ctx) (updateNodeView n2 vNew)
-            setAppState ctx (MkAppState x1 x2 newS x4 x5 x6 finalView x8)
+            let (newApp, async) = stepAppInput app z
+            let vNew = renderApp newApp
+            finalView <- runDom container (updateApp ctx) (updateNodeView n2 vNew)
+            setAppState ctx (MkAppState newApp finalView container)
             setASync (updateAppVal ctx) async
 
 
@@ -303,16 +298,16 @@ mutual
       runDom container (updateApp ctx) (initViewDom view)
 
 export
-runApp : App a -> JS_IO ()
-runApp {a} (MkApp x y z w k l) =
+runApp : App a f b -> JS_IO ()
+runApp {a} {f} {b} app =
   do
     bo <- body
     c1 <- appendNode' "span" bo
     c <- appendNode' "span" c1
     ctxPtr <- jscall "{}" (() -> JS_IO Ptr) ()
-    let ctx = the (Ctx x y a) $ MkCtx ctxPtr
-    let v = w z
-    let appSt = MkAppState x y z w k l v c
+    let ctx = the (Ctx a f b) $ MkCtx ctxPtr
+    let v = renderApp app
+    let appSt = MkAppState app v c
     initView ctx c v
     setAppState ctx $ appSt
 
@@ -346,3 +341,27 @@ foldv x y f z =
   case z of
     Just w => FoldNode (w x) (y $ w x) y f z
     Nothing => FoldNode x (y x) y f z
+
+export
+containerNode : String -> List (String, Maybe a) -> List (String, String) -> View a -> View a
+containerNode = ContainerNode
+
+export
+textNode : String -> View a
+textNode = TextNode
+
+export
+inputNode : Maybe String -> View String
+inputNode = InputNode
+
+export
+selectNode : Maybe (Fin n) -> Vect n String -> View (Fin n)
+selectNode = SelectNode
+
+export
+ajaxFormNode : View a -> View (FormEvent a)
+ajaxFormNode = AjaxFormNode
+
+
+uniqIdView : (Int->View a) -> View a
+uniqIdView x = UniqIdNode x Nothing

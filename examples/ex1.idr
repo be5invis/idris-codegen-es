@@ -7,8 +7,8 @@ vw : String -> View String
 vw s =
   (div $ buildForm' textForm) ++ text s
 
-page : App String
-page = simpleApp
+page : SimpleApp String String
+page = MkSimpleApp
         ""
         vw
         (\x, y => (y, never))

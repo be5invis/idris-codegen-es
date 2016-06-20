@@ -50,8 +50,8 @@ vw x = div $ (buildForm (Just $ FormSetVal x) $ addSubmit "Submit" $ tstForm 0)
            ++ div (text $ show x)
 
 
-page : App TstExp
-page = simpleApp
+page : SimpleApp TstExp TstExp
+page = MkSimpleApp
         (Plus (Pos 6) (Neg 7))
         vw
         (\x, y => (y, never))

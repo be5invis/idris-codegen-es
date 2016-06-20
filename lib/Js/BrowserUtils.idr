@@ -9,12 +9,14 @@ export
 (<$$>) : (Functor m, Functor n) => (a -> b) -> m (n a) -> m (n b)
 (<$$>) f x = (f <$>) <$> x
 
+public export
+SimpleApp : Type -> Type -> Type
+SimpleApp a b = App a (\_=>b) b
+
 export
-simpleApp : b -> (b->View a) -> (b -> a -> (b,ASync a)) -> App a
-simpleApp {a} {b} z v u =
+MkSimpleApp : a -> (a->View b) -> (a -> b -> (a,ASync b)) -> SimpleApp a b
+MkSimpleApp z v u =
   MkApp
-    b
-    (\_=>a)
     z
     v
     u
@@ -22,11 +24,11 @@ simpleApp {a} {b} z v u =
 
 export
 div : View a -> View a
-div x = ContainerNode "div" [] [] x
+div x = containerNode "div" [] [] x
 
 export
 text : String -> View a
-text s = TextNode s
+text s = textNode s
 
 export
 t : String -> View a
@@ -34,7 +36,7 @@ t = text
 
 export
 textinput : Maybe String -> View String
-textinput x = InputNode x
+textinput x = inputNode x
 
 export
 textinput' : View String
@@ -42,11 +44,11 @@ textinput' = textinput Nothing
 
 export
 button : String -> a -> View a
-button lbl val = ContainerNode "button" [("click", Just val)] [] $ text lbl
+button lbl val = containerNode "button" [("click", Just val)] [] $ text lbl
 
 export
 selectInput : Maybe (Fin n) -> Vect n String -> View (Fin n)
-selectInput f o = SelectNode f o
+selectInput f o = selectNode f o
 
 export
 selectInput' : Vect n String -> View (Fin n)
@@ -54,8 +56,8 @@ selectInput' o = selectInput Nothing o
 
 export
 ajaxForm : View a -> View (FormEvent a)
-ajaxForm x = AjaxFormNode x
+ajaxForm x = ajaxFormNode x
 
 export
 submitButton : String -> View a
-submitButton x = ContainerNode "input" [] [("type","submit"),("value",x)] $ text ""
+submitButton x = containerNode "input" [] [("type","submit"),("value",x)] $ text ""

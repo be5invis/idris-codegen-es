@@ -9,8 +9,8 @@ vw : String -> View String
 vw s = textinput' ++ text s
 
 
-page : App String
-page = simpleApp
+page : SimpleApp String String
+page = MkSimpleApp
           ""
           vw
           upd

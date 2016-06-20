@@ -17,16 +17,19 @@ btnColor2css BtnAccent = "btn--accent"
 
 export
 btnRaised : BtnColor -> b -> String -> View b
-btnRaised c v l = ContainerNode "button" [("click", Just v)] [("class", "btn--raised " ++ btnColor2css c)] $ text l
+btnRaised c v l = containerNode "button" [("click", Just v)] [("class", "btn--raised " ++ btnColor2css c)] $ text l
 
 
 export
 clickableTile : b -> View b -> View b
-clickableTile v child = ContainerNode "button" [("click", Just v)] [("class", "tile")] $ child
+clickableTile v child = containerNode "button" [("click", Just v)] [("class", "tile")] $ child
 
 export
 clickableCard : b -> View b -> View b
-clickableCard v child = ContainerNode "button" [("click", Just v)] [("class", "card")] $ child
+clickableCard v child = containerNode "button" [("click", Just v)] [("class", "card")] $ child
+
+--tabbedApps : List (String, App a) -> App a
+--tabbedApps x = ?cenas
 
 {-
 navigation : String -> List (String, b, List (String, b) ) -> View Void b

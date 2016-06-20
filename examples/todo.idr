@@ -21,8 +21,8 @@ vw l =
     z x = zip [0..length x] x
 
 
-page : App TodoAction
-page = simpleApp
+page : SimpleApp (List String) TodoAction
+page = MkSimpleApp
         start
         vw
         upd
