@@ -27,6 +27,7 @@ clickableTile v child = ContainerNode "button" [("click", Just v)] [("class", "t
 export
 clickableCard : b -> View b -> View b
 clickableCard v child = ContainerNode "button" [("click", Just v)] [("class", "card")] $ child
+
 {-
 navigation : String -> List (String, b, List (String, b) ) -> View Void b
 navigation title items =

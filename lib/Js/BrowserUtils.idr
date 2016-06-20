@@ -1,12 +1,24 @@
 module Js.BrowserUtils
 
 import Js.BrowserBase
+import Js.ASync
 
 infixl 4 <$$>
 
 export
 (<$$>) : (Functor m, Functor n) => (a -> b) -> m (n a) -> m (n b)
 (<$$>) f x = (f <$>) <$> x
+
+export
+simpleApp : b -> (b->View a) -> (b -> a -> (b,ASync a)) -> App a
+simpleApp {a} {b} z v u =
+  MkApp
+    b
+    (\_=>a)
+    z
+    v
+    u
+    u
 
 export
 div : View a -> View a

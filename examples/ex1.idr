@@ -7,11 +7,11 @@ vw : String -> View String
 vw s =
   (div $ buildForm' textForm) ++ text s
 
-page : App String String
-page = MkApp
+page : App String
+page = simpleApp
         ""
         vw
-        (\x, y => (x, never))
+        (\x, y => (y, never))
 
 main : JS_IO ()
 main = do

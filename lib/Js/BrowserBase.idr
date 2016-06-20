@@ -35,25 +35,62 @@ data View : Type -> Type where
   FoldNode : Typeable b => b -> View a -> (b -> View a) -> (a->b->(b, Maybe c)) -> Maybe (b->b) -> View c
   SelectNode : Maybe (Fin n) -> Vect n String -> View (Fin n)
 
+
 public export
-record App a b where
+data App : Type -> Type where
+  MkApp : (b:Type) ->
+          (f: b->Type) ->
+          b ->
+          ((x:b) -> View (f x)) ->
+          ((x:b) -> f x -> (b, ASync a)) ->
+          (b -> a -> (b, ASync a)) ->
+          App a
+
+{-
+public export
+record App a where
   constructor MkApp
   state : b
   render : b -> View a
   update : a -> b -> (b, ASync a)
+-}
 
+public export
+data AppState : (b:Type) -> (b->Type) -> Type -> Type where
+  MkAppState : (b:Type) ->
+               (f: b->Type) ->
+               (y:b) ->
+               ((x:b) -> View (f x)) ->
+               ((x:b) -> f x -> (b, ASync a)) ->
+               (b -> a -> (b, ASync a)) ->
+               (View (f y)) ->
+               DomNode ->
+               AppState b f a
+
+InputType : AppState a b c -> Type
+InputType (MkAppState a b x3 x4 x5 x6 x7 x8) = b x3
+
+container : AppState a b c -> DomNode
+container (MkAppState a b x3 x4 x5 x6 x7 x8) = x8
+
+lastView : (x : AppState a b c) -> View (InputType x)
+lastView (MkAppState a b x3 x4 x5 x6 x7 x8) = x7
+
+{-
 record AppState a b where
   constructor MkAppState
   theApp : App a b
   lastView : View a
   container : DomNode
+-}
 
-data Ctx a b = MkCtx Ptr
+data Ctx : (b:Type) -> (b->Type) -> Type -> Type where
+  MkCtx : Ptr -> Ctx a b c
 
-setAppState : Ctx a b -> AppState a b -> JS_IO ()
+setAppState : Ctx a b c -> AppState a b c -> JS_IO ()
 setAppState (MkCtx ctx) z = jscall "%0.app = %1" (Ptr -> Ptr -> JS_IO ()) ctx (believe_me z)
 
-getAppState : Ctx a b -> JS_IO (AppState a b)
+getAppState : Ctx a b c -> JS_IO (AppState a b c)
 getAppState (MkCtx ctx) = believe_me <$> jscall "%0.app" ( Ptr -> JS_IO Ptr) ctx
 
 addEvents : DomPath -> List String -> Dom ViewEvent ()
@@ -235,49 +272,49 @@ mutual
     let i = the Integer $ cast e
     in pure (SelectNode Nothing options, integerToFin i _)
 
-  updateAppVal : Ctx a b -> a -> JS_IO ()
-  updateAppVal ctx x =
+  updateAppVal : Ctx a b c -> c -> JS_IO ()
+  updateAppVal ctx z =
     do
-      appSt <- getAppState ctx
-      let app = theApp appSt
-      let (newS, async) = (update app) x (state app)
-      let vOld = lastView appSt
-      let vNew = (render app) newS
-      newViewNode <- runDom (container appSt) (updateApp ctx) (updateNodeView vOld vNew)
-      setAppState ctx (record{lastView = newViewNode, theApp = record{state = newS} app} appSt)
+      (MkAppState x1 x2 x3 x4 x5 x6 x7 x8) <- getAppState ctx
+      let (newS, async) = x6 x3 z
+      let vNew = x4 newS
+      finalView <- runDom x8 (updateApp ctx) (updateNodeView x7 vNew)
+      setAppState ctx (MkAppState x1 x2 newS x4 x5 x6 finalView x8)
       setASync (updateAppVal ctx) async
 
-  updateApp : Ctx a b -> ViewEvent -> JS_IO ()
+  updateApp : Ctx a b c -> ViewEvent -> JS_IO ()
   updateApp ctx e =
     do
-      appSt <- getAppState ctx
-      (n2, mVal) <- runDom (container appSt) (updateApp ctx) (updateNodeEvent e (lastView appSt))
-      setAppState ctx (record{lastView = n2} appSt)
+      (MkAppState x1 x2 x3 x4 x5 x6 x7 x8) <- getAppState ctx
+      (n2, mVal) <- runDom x8 (updateApp ctx) (updateNodeEvent e x7)
       case mVal of
-        Nothing => pure ()
-        Just x => updateAppVal ctx x
+        Nothing => setAppState ctx (MkAppState x1 x2 x3 x4 x5 x6 n2 x8)
+        Just z =>
+          do
+            let (newS, async) = x5 x3 z
+            let vNew = x4 newS
+            finalView <- runDom x8 (updateApp ctx) (updateNodeView n2 vNew)
+            setAppState ctx (MkAppState x1 x2 newS x4 x5 x6 finalView x8)
+            setASync (updateAppVal ctx) async
 
-  initView : Ctx a b -> DomNode -> View d -> JS_IO ()
+
+  initView : Ctx a b c -> DomNode -> View d -> JS_IO ()
   initView ctx container view =
       runDom container (updateApp ctx) (initViewDom view)
 
-startApp : Ctx a b -> App a b -> DomNode -> JS_IO ()
-startApp ctx x container =
-  do
-    let v = render x $ state x
-    c <- appendNode' "span" container
-    initView ctx c v
-    setAppState ctx $ MkAppState x v c
-
-
 export
-runApp : App a b -> JS_IO ()
-runApp {a} {b} app =
+runApp : App a -> JS_IO ()
+runApp {a} (MkApp x y z w k l) =
   do
     bo <- body
-    c <- appendNode' "span" bo
-    ctx <- jscall "{}" (() -> JS_IO Ptr) ()
-    startApp (the (Ctx a b) $ MkCtx ctx) app c
+    c1 <- appendNode' "span" bo
+    c <- appendNode' "span" c1
+    ctxPtr <- jscall "{}" (() -> JS_IO Ptr) ()
+    let ctx = the (Ctx x y a) $ MkCtx ctxPtr
+    let v = w z
+    let appSt = MkAppState x y z w k l v c
+    initView ctx c v
+    setAppState ctx $ appSt
 
 -------- View Instances ----
 export

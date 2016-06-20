@@ -50,11 +50,11 @@ vw x = div $ (buildForm (Just $ FormSetVal x) $ addSubmit "Submit" $ tstForm 0)
            ++ div (text $ show x)
 
 
-page : App TstExp TstExp
-page = MkApp
+page : App TstExp
+page = simpleApp
         (Plus (Pos 6) (Neg 7))
         vw
-        (\x, y => (x, never))
+        (\x, y => (y, never))
 
 main : JS_IO ()
 main = do
