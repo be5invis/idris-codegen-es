@@ -13,6 +13,10 @@ data Alt : Vect n Type -> Type where
   MkAlt : (Elem t ts) -> t -> Alt ts
 
 public export
+AltExpand: Alt xs -> Alt (x::xs)
+AltExpand (MkAlt p x) = MkAlt (There p) x
+
+public export
 data SDataTy : Type where
   SString : SDataTy
   SUnit : SDataTy

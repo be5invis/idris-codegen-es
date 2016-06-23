@@ -41,7 +41,7 @@ used_functions_exp x =
     used (SOp _ _) = []
     used SNothing = []
     used (SError _) = []
-    used x = error $ "Instruction " ++ show x ++ " missing clause in used"
+--    used x = error $ "Instruction " ++ show x ++ " missing clause in used"
 
     used_alt (SConCase _ _ _ _ a) = used a
     used_alt (SConstCase _ a) = used a

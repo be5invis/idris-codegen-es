@@ -31,13 +31,11 @@ js_main :: Opts -> Idris ()
 js_main opts = do elabPrims
                   loadInputs (inputs opts) Nothing
                   mainProg <- elabMain
-                  ir <- compile (Via "js") (output opts) (Just mainProg)
+                  ir <- compile (Via IBCFormat "js") (output opts) (Just mainProg)
                   runIO $ codegenJs ir
 
 main :: IO ()
 main = do opts <- getOpts
-          if (null (inputs opts)) 
+          if (null (inputs opts))
              then showUsage
              else runMain (js_main opts)
-
-

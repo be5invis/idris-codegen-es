@@ -2,6 +2,7 @@ module Js.BrowserUtils
 
 import Js.BrowserBase
 import Js.ASync
+import Js.SimpleData
 
 infixl 4 <$$>
 
@@ -61,3 +62,47 @@ ajaxForm x = ajaxFormNode x
 export
 submitButton : String -> View a
 submitButton x = containerNode "input" [] [("type","submit"),("value",x)] $ text ""
+
+public export
+data AppGroup : Vect k ((a:Type ** a->Type), Type) -> Type where
+  Nil : AppGroup []
+  (::) : App a f b -> AppGroup ts -> AppGroup (((a**f), b)::ts)
+
+public export
+AppGroupInputTypes : AppGroup ts -> Vect (length ts) Type
+AppGroupInputTypes [] = []
+AppGroupInputTypes (x::xs) = InputType x :: AppGroupInputTypes xs
+
+public export
+AppGroupInputType : AppGroup ts -> Type
+AppGroupInputType x =
+  Alt (AppGroupInputTypes x)
+
+public export
+AppGroupAsyncType : Vect k ((a:Type ** a->Type), Type) -> Type
+AppGroupAsyncType ts = Alt (map snd ts)
+
+export
+renderAppGroup : (g: AppGroup ts) -> Vect (length ts) (View (AppGroupInputType g))
+renderAppGroup [] = []
+renderAppGroup (x::xs) = (MkAlt Here <$> renderApp x) :: map (AltExpand<$>) (renderAppGroup xs)
+
+export
+stepAppGroupInput : (g: AppGroup ts) -> AppGroupInputType g -> (AppGroup ts, ASync (AppGroupAsyncType ts))
+stepAppGroupInput [] y = ([], never)
+stepAppGroupInput (x :: z) (MkAlt Here val) =
+  let (newApp, async) = stepAppInput x val
+  in (newApp :: z, MkAlt Here <$> async)
+stepAppGroupInput (x :: z) (MkAlt (There p) val) =
+  let (groupRest, async) = stepAppGroupInput z (MkAlt p val)
+  in (x :: groupRest, AltExpand <$> async)
+
+export
+stepAppGroupAsync : AppGroup ts -> AppGroupAsyncType ts -> (AppGroup ts, ASync (AppGroupAsyncType ts))
+stepAppGroupAsync [] _ = ([], never)
+stepAppGroupAsync (x :: z) (MkAlt Here val) =
+  let (newApp, async) = stepAppASync x val
+  in (newApp :: z, MkAlt Here <$> async)
+stepAppGroupAsync (x :: z) (MkAlt (There p) val) =
+  let (groupRest, async) = stepAppGroupAsync z (MkAlt p val)
+  in (x :: groupRest, AltExpand <$> async)
