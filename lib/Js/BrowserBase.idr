@@ -68,7 +68,7 @@ export
 renderApp : (p: App a f b) -> View (InputType p)
 renderApp (MkApp s r _ _) = r s
 
-public export
+--public export
 data AppState : (b:Type) -> (b->Type) -> Type -> Type where
   MkAppState : (p: App b f a) ->
                (View (InputType p)) ->

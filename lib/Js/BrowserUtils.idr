@@ -28,6 +28,10 @@ div : View a -> View a
 div x = containerNode "div" [] [] x
 
 export
+cdiv : String -> View a -> View a
+cdiv c x = containerNode "div" [] [("class", c)] x
+
+export
 text : String -> View a
 text s = textNode s
 

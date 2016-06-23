@@ -119,7 +119,11 @@ runServer port services =
                   (Ptr -> (JsFn (Ptr -> JS_IO ())) -> JS_IO Ptr )
                   http
                   (MkJsFn $ \x => procReqRaw servMap (MkRequest x))
-    jscall "%1.listen(%0, function(){console.log('Server listening on: http://localhost:%s', %0)})" (Int -> Ptr -> JS_IO ()) port server
+    jscall
+      "%1.listen(%0, function(){console.log('Server listening on: http://localhost:%s', %0)})"
+      (Int -> Ptr -> JS_IO ())
+      port
+      server
   where
     servMap : SortedMap String (HttpHandler)
     servMap = fromList $ zip (map handlerSelector services) services

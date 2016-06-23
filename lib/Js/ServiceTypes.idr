@@ -8,6 +8,7 @@ data Service : Type where
   MkService : String -> (a:Type) -> (b:Type)
       -> ((String -> Either String a), (a->String), (String -> Either String b), (b->String)) -> Service
 
+{-
 export
 typeInput : Service -> Type
 typeInput (MkService _ x _ _) = x
@@ -15,6 +16,7 @@ typeInput (MkService _ x _ _) = x
 export
 typeOutput : Service -> Type
 typeOutput (MkService _ _ x _) = x
+-}
 
 public export
 getServ : String -> List Service -> Maybe Service

@@ -28,13 +28,37 @@ export
 clickableCard : b -> View b -> View b
 clickableCard v child = containerNode "button" [("click", Just v)] [("class", "card")] $ child
 
+export
 tabbedApps : AppGroup ts -> App (AppGroup ts) AppGroupInputType (AppGroupAsyncType ts)
 tabbedApps x =
   MkApp
     x
-    (\y => Prelude.Foldable.concat $ renderAppGroup y)
+    (\y => cdiv "tabs tab-stuff" $ Prelude.Foldable.concat $ map mkTab $ zip range $ renderAppGroup y)
     stepAppGroupInput
     stepAppGroupAsync
+  where
+    f2s : Fin n -> String
+    f2s x = cast (finToInteger x + 1)
+    mkTab : (Fin n, View a) -> View a
+    mkTab (i, x) =
+      (containerNode
+        "input"
+        []
+        [("type", "ratio"), ("name", "tabs"),("id", "tab" ++ f2s i)]
+        (t "")
+      ) ++
+      (containerNode
+        "div"
+        []
+        [("class", "tab-label-content"), ("id", "tab" ++ f2s i ++ "-content")]
+        ((containerNode
+            "label"
+            []
+            [("for","tab"++f2s i)]
+            (t "xpto")
+         ) ++ cdiv "tab-content" x
+        )
+      )
 
 {-
 navigation : String -> List (String, b, List (String, b) ) -> View Void b
