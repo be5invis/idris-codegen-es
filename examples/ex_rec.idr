@@ -34,7 +34,8 @@ tstForm i =
     f : Fin 3 -> Type
     f FZ = Nat
     f (FS FZ) = Nat
-    f (FS (FS FZ)) = (TstExp, TstExp)
+    f _ = (TstExp, TstExp)
+    theForm : (i: Fin 3) -> Form (f i)
     theForm FZ = natForm
     theForm (FS FZ) = natForm
     theForm (FS (FS FZ)) = tupleForm (tstForm $ i+1) (tstForm $ i+1)

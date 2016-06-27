@@ -14,8 +14,8 @@ clearContents x =
   (Ptr -> JS_IO ())
   x
 
-removeChild : Ptr -> Int -> JS_IO ()
-removeChild node pos = jscall "%0.removeChild(%0.childNodes[%1] )" (Ptr -> Int -> JS_IO ()) node pos
+removeChildNode : Ptr -> Int -> JS_IO ()
+removeChildNode node pos = jscall "%0.removeChild(%0.childNodes[%1] )" (Ptr -> Int -> JS_IO ()) node pos
 
 childNode : Int -> Ptr -> JS_IO Ptr
 childNode pos node = jscall "%0.childNodes[%1]" (Ptr -> Int -> JS_IO Ptr) node pos
@@ -26,6 +26,9 @@ setTextContent node s = jscall "%0.textContent = %1" (Ptr -> String -> JS_IO ())
 
 appendChild : Ptr -> Ptr -> JS_IO Ptr
 appendChild node child = jscall "%0.appendChild(%1)" (Ptr -> Ptr -> JS_IO Ptr) node child
+
+insertBefore : Ptr -> Ptr -> Ptr -> JS_IO Ptr
+insertBefore node new next = jscall "%0.insertBefore(%1,%2)" (Ptr -> Ptr -> Ptr -> JS_IO Ptr) node new next
 
 parent : Ptr -> JS_IO Ptr
 parent node = jscall "%0.parentNode" (Ptr -> JS_IO Ptr) node
@@ -66,6 +69,7 @@ setClass node val = jscall "%0.className = %1" (Ptr->String->JS_IO ()) node val
 setSelected : Ptr -> Bool -> JS_IO ()
 setSelected node True = jscall "%0.selected = true" (Ptr->JS_IO ()) node
 setSelected node False = jscall "%0.selected = false" (Ptr->JS_IO ()) node
+
 
 
 ------ Network -------

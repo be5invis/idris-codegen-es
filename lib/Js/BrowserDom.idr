@@ -6,13 +6,7 @@ export
 data DomNode  = MkDomNode Ptr
 
 export
-data DomPath = MkDomPath (DomNode -> JS_IO (Maybe DomNode) )
-
-export
 data DomEvent a = MkDomEvent (Ptr -> JS_IO a)
-
-export
-data Dom e a = MkDom (DomNode -> (e -> JS_IO ()) -> JS_IO a)
 
 export
 Functor DomEvent where
@@ -34,143 +28,74 @@ Monad DomEvent where
         let MkDomEvent g = f a
         g x
 
-export
-Functor (Dom e) where
-  map f (MkDom fa) = MkDom $ \n, p => f <$> fa n p
 
 export
-Applicative (Dom e) where
-  pure a = MkDom $ \_, _ => pure a
-
-  (<*>) (MkDom f) (MkDom fa) = MkDom $ \n, p => f n p <*> fa n p
-
-export
-Monad (Dom e) where
-  (>>=) (MkDom fa) f =
-    MkDom $ \n, p =>
-      do
-        x <- fa n p
-        let MkDom g = (f x)
-        g n p
-
-export
-appendNode' : String -> DomNode -> JS_IO DomNode
-appendNode' tag (MkDomNode n) = MkDomNode <$> appendChild n !(createElement tag)
+appendNode : String -> DomNode -> JS_IO DomNode
+appendNode tag (MkDomNode n) = MkDomNode <$> appendChild n !(createElement tag)
 
 
 export
-child' : Nat -> DomNode -> JS_IO (Maybe DomNode)
-child' i (MkDomNode p) =
+child : Nat -> DomNode -> JS_IO (Maybe DomNode)
+child i (MkDomNode p) =
   if !(lenChilds p) > (cast i) then (Just . MkDomNode) <$> childNode (cast i) p
     else pure Nothing
 
 export
-lengthChilds' : DomNode -> JS_IO Int
-lengthChilds' (MkDomNode p) = lenChilds p
+lengthChilds : DomNode -> JS_IO Int
+lengthChilds (MkDomNode p) = lenChilds p
+
 
 export
-solvePath : DomPath -> DomNode -> JS_IO(Maybe DomNode)
-solvePath (MkDomPath f) x = f x
+clear : DomNode -> JS_IO ()
+clear (MkDomNode x) = clearContents x
 
 export
-clear' : DomNode -> JS_IO ()
-clear' (MkDomNode x) = clearContents x
+removeChild : Nat -> DomNode -> JS_IO ()
+removeChild n (MkDomNode node) = removeChildNode node (cast n)
 
-export
-runDom : DomNode -> (e -> JS_IO ()) -> Dom e a -> JS_IO a
-runDom container procE (MkDom x) =
-  x container procE
-
-export
-chrootDom : DomPath -> Dom e a -> Dom e (Maybe a)
-chrootDom path ori = MkDom $ \x, y =>
-  case !(solvePath path x) of
-    Nothing => pure Nothing
-    Just z => Just <$> runDom z y ori
-
-export
-applyEvents : (e->i) -> Dom e a -> Dom i a
-applyEvents f ori = MkDom $ \x, y =>  runDom x (y . f) ori
-
-export
-root : DomPath
-root = MkDomPath (\x => pure $ Just x)
-
-export
-child : Nat -> DomPath -> DomPath
-child pos path = MkDomPath $ \x =>
-  do
-    base <- solvePath path x
-    case base of
-      Nothing => pure Nothing
-      Just x => child' pos x
 
 export
 body : JS_IO DomNode
 body = MkDomNode <$> docBody
 
 export
-domLog : String -> Dom e ()
-domLog s = MkDom $ \_, _=> putStr' s
+registEvent : (e -> JS_IO ()) -> DomNode -> String -> DomEvent e -> JS_IO ()
+registEvent proc (MkDomNode n) eventType (MkDomEvent getDomE) =
+    addEventListener n eventType (\x => getDomE x >>= proc  )
 
 export
-domLogPath : DomPath -> Dom e ()
-domLogPath p = MkDom $ \x, _=>
-    case !(solvePath p x) of
-      Nothing => putStr' "undefined"
-      Just (MkDomNode y) => jscall "console.log(%0)" (Ptr -> JS_IO ()) y
+logNode : DomNode -> JS_IO ()
+logNode (MkDomNode node) =
+  jscall "console.log(%0)" (Ptr -> JS_IO ()) node
 
 export
-appendNode : String -> DomPath -> Dom e (Maybe DomPath)
-appendNode tag path = MkDom $ \node, _ =>
-    case !(solvePath path node) of
-      Nothing => pure Nothing
-      Just (MkDomNode n) =>
-        do
-          p <- appendChild n !(createElement tag)
-          pure $ Just $ MkDomPath (\_ => pure $ Just $ MkDomNode p)
+setValue : String -> DomNode -> JS_IO ()
+setValue s (MkDomNode node) =
+  setVal node s
 
 export
-clear : DomPath -> Dom e ()
-clear path = MkDom $ \node, _ =>
-    case !(solvePath path node) of
-      Nothing => putStr' "Warning: unsolvable path"
-      Just x => clear' x
-
+setText : String -> DomNode -> JS_IO ()
+setText s (MkDomNode node) =
+  do
+    setTextContent node s
 
 export
-setValue : String -> DomPath -> Dom e ()
-setValue s path = MkDom $ \node, _ =>
-  case !(solvePath path node) of
-    Nothing => putStr' "Warning: unsolvable path"
-    Just (MkDomNode p) => setVal p s
+insertNodePos : String -> DomNode -> Nat -> JS_IO DomNode
+insertNodePos tag node@(MkDomNode y) pos =
+  do
+    c <- child pos node
+    case c of
+      Nothing => appendNode tag node
+      Just (MkDomNode z) => MkDomNode <$> insertBefore y !(createElement tag) z
 
 export
-setText : String -> DomPath -> Dom e ()
-setText s (MkDomPath path) = MkDom $ \node, _ =>
-    case !(path node) of
-      Just (MkDomNode n) => setTextContent n s
+setAttribute : DomNode -> (String, String) -> JS_IO ()
+setAttribute (MkDomNode n) attr =
+    setAttr n attr
 
 export
-registEvent : DomPath -> String -> DomEvent e -> Dom e ()
-registEvent (MkDomPath path) eventType (MkDomEvent getDomE) = MkDom $ \node, proc =>
-  case !(path node) of
-    Nothing => pure ()
-    Just (MkDomNode n) => addEventListener n eventType (\x => getDomE x >>= proc  )
-
-export
-removeAttribute : DomPath -> String -> Dom e ()
-removeAttribute (MkDomPath path) key = MkDom $ \node, proc =>
-  case !(path node) of
-    Nothing => pure ()
-    Just (MkDomNode n) => removeAttr n key
-
-export
-setAttribute : DomPath -> (String, String) -> Dom e ()
-setAttribute (MkDomPath path) attr = MkDom $ \node, proc =>
-  case !(path node) of
-    Nothing => pure ()
-    Just (MkDomNode n) => setAttr n attr
+removeAttribute : DomNode -> String -> JS_IO ()
+removeAttribute (MkDomNode node) name = removeAttr node name
 
 export
 targetValue : DomEvent String
@@ -179,3 +104,19 @@ targetValue = MkDomEvent $ \x => jscall "%0.target.value" (Ptr -> JS_IO String) 
 export
 preventDefault : DomEvent ()
 preventDefault = MkDomEvent $ \x => jscall "%0.preventDefault()" (Ptr -> JS_IO ()) x
+
+export
+genId : JS_IO Int
+genId =
+    jscall
+        ("(function(){" ++
+         "    if(window.idris_js_global_id_counter){" ++
+         "      window.idris_js_global_id_counter += 1;" ++
+         "    }else{" ++
+         "      window.idris_js_global_id_counter = 0;" ++
+         "    }" ++
+         "    return window.idris_js_global_id_counter;" ++
+         "})()"
+        )
+        (() -> JS_IO Int)
+        ()

@@ -29,22 +29,28 @@ clickableCard : b -> View b -> View b
 clickableCard v child = containerNode "button" [("click", Just v)] [("class", "card")] $ child
 
 export
-tabbedApps : AppGroup ts -> App (AppGroup ts) AppGroupInputType (AppGroupAsyncType ts)
-tabbedApps x =
+tabbedApps : AppGroup ts -> Vect (length ts) String -> App (AppGroup ts) AppGroupInputType (AppGroupAsyncType ts)
+tabbedApps x labels =
   MkApp
     x
-    (\y => cdiv "tabs tab-stuff" $ Prelude.Foldable.concat $ map mkTab $ zip range $ renderAppGroup y)
+    (\y => uniqIdView (\i => mkTabs (renderAppGroup y) labels ("id" ++ show i) ))
     stepAppGroupInput
     stepAppGroupAsync
   where
     f2s : Fin n -> String
     f2s x = cast (finToInteger x + 1)
-    mkTab : (Fin n, View a) -> View a
-    mkTab (i, x) =
+    checked : Bool -> List (String, String)
+    checked False = []
+    checked True = [("checked","true")]
+    checkedFin : Fin n -> List (String, String)
+    checkedFin FZ = checked True
+    checkedFin _ = checked False
+    mkTab : (Fin n, View a, String) -> View a
+    mkTab (i, x, lbl) =
       (containerNode
         "input"
         []
-        [("type", "ratio"), ("name", "tabs"),("id", "tab" ++ f2s i)]
+        (checkedFin i ++[("type", "radio"), ("name", "tabs"),("id", "tab" ++ f2s i)])
         (t "")
       ) ++
       (containerNode
@@ -55,10 +61,15 @@ tabbedApps x =
             "label"
             []
             [("for","tab"++f2s i)]
-            (t "xpto")
+            (t lbl)
          ) ++ cdiv "tab-content" x
         )
       )
+    mkTabs : Vect n (View a) -> Vect n String -> String -> View a
+    mkTabs tabs labels id =
+      cdiv
+        ("tabs tab-" ++ id)
+        (concat $ map mkTab $ zip range (zip tabs labels))
 
 {-
 navigation : String -> List (String, b, List (String, b) ) -> View Void b
