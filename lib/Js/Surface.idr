@@ -17,23 +17,24 @@ btnColor2css BtnAccent = "btn--accent"
 
 export
 btnRaised : BtnColor -> b -> String -> View b
-btnRaised c v l = containerNode "button" [("click", Just v)] [("class", "btn--raised " ++ btnColor2css c)] $ text l
+btnRaised c v l = text "button" [click v] [css "btn--raised ", css $ btnColor2css c] l
+
+export
+tile : Attribute
+tile = css "tile"
+
+export
+card : Attribute
+card = css "card"
 
 
 export
-clickableTile : b -> View b -> View b
-clickableTile v child = containerNode "button" [("click", Just v)] [("class", "tile")] $ child
-
-export
-clickableCard : b -> View b -> View b
-clickableCard v child = containerNode "button" [("click", Just v)] [("class", "card")] $ child
-
-export
-tabbedApps : AppGroup ts -> Vect (length ts) String -> App (AppGroup ts) AppGroupInputType (AppGroupAsyncType ts)
-tabbedApps x labels =
+tabbedApps : List Attribute -> AppGroup ts -> Vect (length ts) String ->
+                App (AppGroup ts) AppGroupInputType (AppGroupAsyncType ts)
+tabbedApps attrs x labels =
   MkApp
     x
-    (\y => uniqIdView (\i => mkTabs (renderAppGroup y) labels ("id" ++ show i) ))
+    (\y => uniqIdView (\i => mkTabs attrs (renderAppGroup y) labels ("id" ++ show i) ))
     stepAppGroupInput
     stepAppGroupAsync
   where
@@ -62,38 +63,77 @@ tabbedApps x labels =
             []
             [("for","tab"++f2s i)]
             (t lbl)
-         ) ++ cdiv "tab-content" x
+         ) ++ div [css "tab-content"] x
         )
       )
-    mkTabs : Vect n (View a) -> Vect n String -> String -> View a
-    mkTabs tabs labels id =
-      cdiv
-        ("tabs tab-" ++ id)
-        (concat $ map mkTab $ zip range (zip tabs labels))
+    mkTabs : List Attribute -> Vect n (View a) -> Vect n String -> String -> View a
+    mkTabs attrs tabs labels id =
+      div
+        ( css ("tabs tab-" ++ id) :: attrs)
+        ((concat $ map mkTab $ zip range (zip tabs labels)) ++ div [css "slide"] empty)
 
-{-
-navigation : String -> List (String, b, List (String, b) ) -> View Void b
-navigation title items =
+public export
+data Menu : Nat -> Type where
+  Nil : Menu 0
+  (::) : String -> Menu n -> Menu (S n)
 
+getMenuPos : String -> Menu n -> Maybe Nat
+getMenuPos x y =
+  getMenuPos' 0 x y
   where
-    dropItem (lvl val) = li $ a val lbl
-    item (lbl, val, drop) =
-      if isNil drop then
-        li $ a val lbl
-        else li $ a val lbl .+. (map dropItem drop)
-    menu = ul $
+    getMenuPos' : Nat -> String -> (Menu m) -> Maybe Nat
+    getMenuPos' _ _ Nil = Nothing
+    getMenuPos' acc y (x::xs) =
+      if x == y then Just acc
+        else getMenuPos' (S acc) y xs
 
-    list = zip [0..length lst] lst
-    menu = addClass "pure-menu pure-menu-horizontal" div $ addClass "pure-menu-list" $ ul $
-              map (\i, lbl, _ => addClass "pure-menu-item" $ li $ addClass "pure-menu-link" $ a i lbl ) list
-    render x = index x
-
-
-hMenu : Vect n (String, View a b) -> View a b
-hMenu lst =
+export
+runAppWithNav :  String -> AppGroup ts -> Menu (length ts) -> JS_IO()
+runAppWithNav {ts} name x m =
+  do
+    hash <- getHash
+    let s0 = case getMenuPos hash m of
+                Nothing => 0
+                Just z => z
+    runApp'(Left <$> onHash) (MkApp (s0,x) render stpInput stpAsync)
   where
-    list = zip [0..length lst] lst
-    menu = addClass "pure-menu pure-menu-horizontal" div $ addClass "pure-menu-list" $ ul $
-              map (\i, lbl, _ => addClass "pure-menu-item" $ li $ addClass "pure-menu-link" $ a i lbl ) list
-    render x = index x
--}
+    onHash : ASync String
+    onHash =
+      do
+        i <- onHashChange
+        liftJS_IO $ getHash
+    inpType : (Nat, AppGroup ts) -> Type
+    inpType (_, x) = AppGroupInputType x
+    renderMenu : Menu n -> View a
+    renderMenu Nil = empty
+    renderMenu (x::xs) = (li [] $ link [href $ "#" ++ x] x) ++ renderMenu xs
+    renderAlts : Bool -> Nat -> Vect k (View a) -> View a
+    renderAlts _ _ [] = empty
+    renderAlts False Z (x::xs) = span [] x ++ renderAlts True Z xs
+    renderAlts False (S i) (x::xs) = span [hidden] x ++ renderAlts False i xs
+    renderAlts True _ (x::xs) = span [hidden] x ++ renderAlts True Z xs
+    render : (s:(Nat, AppGroup ts)) -> View (inpType s)
+    render (n, x) =
+      (container "header" [] [css "container--baseline"] $
+        (h2 [css "m--1 g--4"] name) ++
+        (containerNode "input" [] [("type", "checkbox"),("id","nav--horizontal-responsive")] empty) ++
+        (textNode "label" [] [("for","nav--horizontal-responsive")] "Menu")++
+        ( container "nav" [] [css "g--3 nav--horizontal"] $ ul [] $
+          renderMenu m
+        )
+      ) ++
+      (renderAlts False n $ renderAppGroup x)
+    stpInput : (s:(Nat, AppGroup ts)) -> inpType s ->
+                  ((Nat, AppGroup ts), ASync (Either String (AppGroupAsyncType ts)))
+    stpInput (n,x) y =
+      let (w,z) = stepAppGroupInput x y
+      in ((n,w), Right <$> z)
+    stpAsync : (s:(Nat, AppGroup ts)) -> Either String (AppGroupAsyncType ts) ->
+                  ((Nat, AppGroup ts), ASync (Either String (AppGroupAsyncType ts)))
+    stpAsync (n, x) (Right y) =
+      let (w,z) = stepAppGroupAsync x y
+      in ((n,w), Right <$> z)
+    stpAsync (n,x) (Left y) =
+      case getMenuPos y m of
+        Nothing => ((n,x), never)
+        Just z => ((z,x), never)

@@ -39,6 +39,7 @@ Applicative ASync where
   (MkASync stepf) <*> (MkASync stepx) =
     MkASync (\onevt => stepf (\f => stepx (\x => onevt (f x)) ))
 
+export
 Monad ASync where
   (>>=) (MkASync stepx) f =
     MkASync $ \onevt => stepx (\x => let MkASync stepf = f x in stepf onevt )

@@ -23,49 +23,6 @@ MkSimpleApp z v u =
     u
     u
 
-export
-div : View a -> View a
-div x = containerNode "div" [] [] x
-
-export
-cdiv : String -> View a -> View a
-cdiv c x = containerNode "div" [] [("class", c)] x
-
-export
-text : String -> View a
-text s = textNode s
-
-export
-t : String -> View a
-t = text
-
-export
-textinput : Maybe String -> View String
-textinput x = inputNode x
-
-export
-textinput' : View String
-textinput' = textinput Nothing
-
-export
-button : String -> a -> View a
-button lbl val = containerNode "button" [("click", Just val)] [] $ text lbl
-
-export
-selectInput : Maybe (Fin n) -> Vect n String -> View (Fin n)
-selectInput f o = selectNode f o
-
-export
-selectInput' : Vect n String -> View (Fin n)
-selectInput' o = selectInput Nothing o
-
-export
-ajaxForm : View a -> View (FormEvent a)
-ajaxForm x = ajaxFormNode x
-
-export
-submitButton : String -> View a
-submitButton x = containerNode "input" [] [("type","submit"),("value",x)] $ text ""
 
 public export
 data AppGroup : Vect k ((a:Type ** a->Type), Type) -> Type where
@@ -110,3 +67,176 @@ stepAppGroupAsync (x :: z) (MkAlt Here val) =
 stepAppGroupAsync (x :: z) (MkAlt (There p) val) =
   let (groupRest, async) = stepAppGroupAsync z (MkAlt p val)
   in (x :: groupRest, AltExpand <$> async)
+
+
+export
+data Attribute = CssAttribute String
+               | WidthAttribute String
+               | HRefAttribute String
+               | HiddenAttribute Bool
+
+export
+data Event a = EventClick a
+
+export
+click : a -> Event a
+click = EventClick
+
+export
+css : String -> Attribute
+css = CssAttribute
+
+export
+href : String -> Attribute
+href = HRefAttribute
+
+export
+hidden : Attribute
+hidden = HiddenAttribute True
+
+export
+hidden' : Bool -> Attribute
+hidden' = HiddenAttribute
+
+export
+width : String -> Attribute
+width = WidthAttribute
+
+getClass : List Attribute -> List String
+getClass (CssAttribute x :: xs) = words x ++ getClass xs
+getClass (_::xs) = getClass xs
+getClass [] = []
+
+makeClass : List Attribute -> Maybe String
+makeClass [] = Nothing
+makeClass x = Just $ unwords $ nub $ getClass x
+
+makeWidth : List Attribute -> Maybe String
+makeWidth [] = Nothing
+makeWidth (WidthAttribute x :: _) = Just x
+makeWidth (_::xs) = makeWidth xs
+
+makeHRef : List Attribute -> Maybe String
+makeHRef [] = Nothing
+makeHRef (HRefAttribute x :: _) = Just x
+makeHRef (_::xs) = makeHRef xs
+
+makeHidden : List Attribute -> Maybe String
+makeHidden [] = Nothing
+makeHidden (HiddenAttribute True :: _) = Just "true"
+makeHidden (HiddenAttribute False :: _) = Nothing
+makeHidden (_::xs) = makeHidden xs
+
+makeEvents : List (Event a) -> List (String, a)
+makeEvents xs =
+  nubBy (\(x,_), (y,_) => x == y) (map mkE xs)
+  where
+    mkE : Event a -> (String, a)
+    mkE (EventClick x) = ("click", x)
+
+makeAttributes : List Attribute -> List (String, String)
+makeAttributes attrs =
+  mkAttr "class" makeClass
+  ++ mkAttr "width" makeWidth
+  ++ mkAttr "href" makeHRef
+  ++ mkAttr "hidden" makeHidden
+  where
+    mkAttr n m =
+      case m attrs of
+        Nothing => []
+        Just z => [(n, z)]
+
+export
+container : String -> List (Event a) -> List Attribute -> View a -> View a
+container tag evts attrs child =
+  containerNode
+    tag
+    (makeEvents evts)
+    (makeAttributes attrs)
+    child
+
+
+export
+idiv : List (Event a) -> List Attribute -> View a -> View a
+idiv = container "div"
+
+export
+div : List Attribute -> View a -> View a
+div = idiv []
+
+export
+d : View a -> View a
+d x = div [] x
+
+export
+ispan : List (Event a) -> List Attribute -> View a -> View a
+ispan = container "span"
+
+export
+span : List Attribute -> View a -> View a
+span = ispan []
+
+export
+text : String -> List (Event a) -> List Attribute -> String -> View a
+text tag evts attrs txt =
+  textNode
+    tag
+    (makeEvents evts)
+    (makeAttributes attrs)
+    txt
+
+export
+t : String -> View a
+t = text "span" [] []
+
+export
+link : List Attribute -> String -> View a
+link attrs x = text "a" [] attrs x
+
+export
+h1 : List Attribute -> String -> View a
+h1 attrs x = text "h1" [] attrs x
+
+export
+h2 : List Attribute -> String -> View a
+h2 attrs x = text "h2" [] attrs x
+
+export
+ul : List Attribute -> View a -> View a
+ul attrs x = container "ul" [] attrs x
+
+export
+li : List Attribute -> View a -> View a
+li attrs x = container "ul" [] attrs x
+
+export
+textinput : Maybe String -> View String
+textinput x = inputNode x
+
+export
+textinput' : View String
+textinput' = textinput Nothing
+
+export
+button : String -> a -> View a
+button lbl val = text "button" [click val] [] lbl
+
+export
+selectInput : Maybe (Fin n) -> Vect n String -> View (Fin n)
+selectInput f o = selectNode f o
+
+export
+selectInput' : Vect n String -> View (Fin n)
+selectInput' o = selectInput Nothing o
+
+export
+ajaxForm : View a -> View (FormEvent a)
+ajaxForm x = ajaxFormNode x
+
+export
+submitButton : String -> View a
+submitButton x = containerNode "input" [] [("type","submit"),("value",x)] $ empty
+
+export
+fileSelector : View (Maybe DomFile)
+fileSelector = fileSelectorNode

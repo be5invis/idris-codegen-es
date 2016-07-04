@@ -9,6 +9,9 @@ export
 data DomEvent a = MkDomEvent (Ptr -> JS_IO a)
 
 export
+data DomFile = MkDomFile Ptr
+
+export
 Functor DomEvent where
   map f (MkDomEvent de) = MkDomEvent $ \x => f <$> de x
 
@@ -102,6 +105,16 @@ targetValue : DomEvent String
 targetValue = MkDomEvent $ \x => jscall "%0.target.value" (Ptr -> JS_IO String) x
 
 export
+targetFile : DomEvent (Maybe DomFile)
+targetFile =
+  MkDomEvent $ \x =>
+    do
+      files <- jscall "%0.target.files[0]" (Ptr -> JS_IO Ptr) x
+      length <- jscall "%0.length" (Ptr -> JS_IO Int) files
+      if length == 0 then pure Nothing
+        else Just <$> (MkDomFile <$> jscall "%0[0]" (Ptr -> JS_IO Ptr) files)
+
+export
 preventDefault : DomEvent ()
 preventDefault = MkDomEvent $ \x => jscall "%0.preventDefault()" (Ptr -> JS_IO ()) x
 
@@ -120,3 +133,20 @@ genId =
         )
         (() -> JS_IO Int)
         ()
+
+
+export
+onHashChange: ASync ()
+onHashChange = MkASync (\x => jscall
+                                "window.addEventListener('hashchange', %0, false)"
+                                (( JsFn (() -> JS_IO ())) -> JS_IO ())
+                                (MkJsFn x)
+                       )
+
+export
+getHref : JS_IO String
+getHref = jscall "window.location.href" (() -> JS_IO String) ()
+
+export
+getHash : JS_IO String
+getHash = jscall "decodeURI(window.location.hash.substr(1))" (() -> JS_IO String) ()

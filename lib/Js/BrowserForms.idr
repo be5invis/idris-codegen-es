@@ -3,7 +3,7 @@ module Js.BrowserForms
 import Debug.Trace
 
 import Js.BrowserBase
-import public Js.BrowserUtils
+import Js.BrowserUtils
 import Data.Vect
 
 export
@@ -53,7 +53,7 @@ buildForm {a} x (MkForm s0 f) =
     update (Value z) _ = (z, Nothing)
     vw : MError a -> View (FormEvent (MError a))
     vw z =
-      ajaxForm $ (f z) ++ (concat $ map (div . text) $ errors z)
+      ajaxForm $ (f z) ++ (concat $ map (d . t) $ errors z)
 
 export
 buildForm' : Form a -> View a
@@ -170,4 +170,4 @@ vtrans f (MkForm k v) = MkForm k (\x => f $ v x)
 
 export
 addSubmit : String -> Form a -> Form a
-addSubmit x y = vtrans (\z => z ++ div (submitButton x)) y
+addSubmit x y = vtrans (\z => z ++ d (submitButton x)) y
