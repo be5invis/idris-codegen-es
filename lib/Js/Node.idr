@@ -39,7 +39,7 @@ error 400 (MkRequest p) =
     jscall "%0[1].writeHead(400,{'Content-Type': 'text/plain'})" (Ptr->JS_IO ()) p
     jscall "%0[1].end(%1)" (Ptr -> String -> JS_IO ()) p "400 Bad Request"
 
-export
+public export
 data HttpHandler = HandleGet String (JS_IO String)
                  | HandlePost String (String -> ASync String)
 
@@ -47,31 +47,35 @@ handlerSelector : HttpHandler -> String
 handlerSelector (HandleGet s _) = "GET" ++ s
 handlerSelector (HandlePost s _) = "POST" ++ s
 
-serviceTy : Service -> Type
-serviceTy (MkService _ a b _) = (a -> ASync b)
+total
+public export
+ImplementationTy : ServiceTy -> Type
+ImplementationTy (RPCServiceTy a b) = (a -> ASync b)
+ImplementationTy (FeedServiceTy a b) = (a -> ASync b)
 
-makeRawServ : (s:Service) -> serviceTy s -> HttpHandler
-makeRawServ (MkService s _ _ (dec, _, _, enc)) f =
-  HandlePost s $ \x =>
-        case dec x of
-        --  Left z => do
-        --    liftJS_IO $ putStr' x
-        --    liftJS_IO $ putStr' z
-        --    pure $ Left 400
+makeRawServ : Service name st -> ImplementationTy st -> HttpHandler
+makeRawServ (RPCService name e1 e2) f =
+  HandlePost name $ \x =>
+        case decode e1 x of
+          --Left z => do
+          --  liftJS_IO $ putStr' x
+          --  liftJS_IO $ putStr' z
+          --  pure $ Left 400
           Right z =>
-            map enc $ f z
+            encode e2 <$> f z
 
-export
-MakeServicesTy : List Service -> Type
+total
+public export
+MakeServicesTy : Vect k (String, ServiceTy) -> Type
 MakeServicesTy [] = List HttpHandler
-MakeServicesTy (x::xs) = serviceTy x -> MakeServicesTy xs
+MakeServicesTy ((_,st)::xs) = ImplementationTy st -> MakeServicesTy xs
 
-makeServices' : (ls : List Service) -> List HttpHandler -> MakeServicesTy ls
+makeServices' : ServiceGroup ts -> List HttpHandler -> MakeServicesTy ts
 makeServices' [] acc = acc
 makeServices' (x::xs) acc = \next => makeServices' xs (makeRawServ x next :: acc )
 
 export
-makeServices : (s : List Service) -> MakeServicesTy s
+makeServices : ServiceGroup ts -> MakeServicesTy ts
 makeServices x = makeServices' x []
 
 procInput : Request -> (String -> ASync String) -> String -> JS_IO ()

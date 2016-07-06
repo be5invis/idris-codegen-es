@@ -11,24 +11,12 @@ export
 httpPost : String -> String -> ASync String
 httpPost url body = MkASync $ httpPost_raw url body
 
-public export
-ServiceTy : Maybe Service -> Type
-ServiceTy Nothing = (Void -> ASync (Either String Void))
-ServiceTy (Just (MkService _ a b _)) = (a -> ASync b)
-
-runServ : (ms:Maybe Service) -> ServiceTy ms
-runServ Nothing = void
-runServ (Just (MkService s _ _ (_, enc, dec, _)))=
-  \x => decaux <$> httpPost s (enc x)
-  where
-    decaux x =
-      case dec x of
-        Right z => z
-
-public export
-CallServTy : List Service -> String -> Type
-CallServTy xs y = ServiceTy $ getServ y xs
-
 export
-callServ : (ls: List Service) -> (name:String) -> CallServTy ls name
-callServ ls name = runServ $ getServ name ls
+callRPC : ServiceGroup ts -> (name:String) -> Elem (name, RPCServiceTy a b) ts -> a -> ASync b
+callRPC group name p val =
+  let (RPCService _ e1 e2) = getService name group p
+  in do
+    res <- httpPost name (encode e1 val)
+    case decode e2 res of
+      Right x => pure x
+      Left err => error err

@@ -6,7 +6,6 @@ import public Lightyear.Strings
 
 import public Data.SortedMap
 
-
 export
 data JsonValue = JsonString String
                | JsonNumber Double

@@ -26,6 +26,10 @@ never : ASync a
 never = MkASync (\onevt => pure ())
 
 export
+error : String -> ASync a
+error s = MkASync (\_ => putStr' s)
+
+export
 liftJS_IO : JS_IO a -> ASync a
 liftJS_IO x = MkASync (\onevt => x >>= onevt)
 

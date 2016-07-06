@@ -1,28 +1,38 @@
 module Js.ServiceTypes
 
 import public Js.Json
+import public Data.Vect
 
 
 public export
-data Service : Type where
-  MkService : String -> (a:Type) -> (b:Type)
-      -> ((String -> Either String a), (a->String), (String -> Either String b), (b->String)) -> Service
-
-{-
-export
-typeInput : Service -> Type
-typeInput (MkService _ x _ _) = x
-
-export
-typeOutput : Service -> Type
-typeOutput (MkService _ _ x _) = x
--}
+data ServiceTy = RPCServiceTy Type Type
+               | FeedServiceTy Type Type
 
 public export
-getServ : String -> List Service -> Maybe Service
-getServ _ [] = Nothing
-getServ n (s@(MkService n2 _ _ _ )::rest) = if n == n2 then Just s else getServ n rest
+data EncoderDecoder a = MkEncoderDecoder (a -> String) (String -> Either String a)
+
+public export
+data Service : String -> ServiceTy -> Type where
+  RPCService : (s:String) -> EncoderDecoder a -> EncoderDecoder b -> Service s (RPCServiceTy a b)
+
+public export
+data ServiceGroup : Vect k (String, ServiceTy) -> Type where
+  Nil : ServiceGroup []
+  (::) : Service s t -> ServiceGroup ts -> ServiceGroup ((s,t)::ts)
 
 export
-jsonServ : (BothJson a, BothJson b) => ((String -> Either String a), (a->String), (String -> Either String b), (b->String))
-jsonServ = (decode, encode, decode, encode)
+decode : EncoderDecoder a -> String -> Either String a
+decode (MkEncoderDecoder _ d) x = d x
+
+export
+encode : EncoderDecoder a -> a -> String
+encode (MkEncoderDecoder e _) x = e x
+
+public export
+getService : (name:String) -> ServiceGroup ts -> Elem (name, s) ts -> Service name s
+getService name (x :: xs) Here = x
+getService name (x :: xs) (There p') = getService name xs p'
+
+export
+jsonEncoderDecoder : BothJson a => EncoderDecoder a
+jsonEncoderDecoder = MkEncoderDecoder encode decode
