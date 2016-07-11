@@ -6,7 +6,7 @@ upd : String -> String -> (String, ASync String)
 upd x y = (y, never)
 
 vw : String -> View String
-vw s = textinput' ++ text s
+vw s = textinput' ++ t s
 
 
 page : SimpleApp String String

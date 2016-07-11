@@ -47,10 +47,10 @@ buildForm {a} x (MkForm s0 f) =
   where
     g ResetForm = s0
     g (FormSetVal y) = Right y
-    update Submit (Right z) = (s0, Just z)
-    update Submit (Left []) = (Left ["Pease fill the form"], Nothing)
-    update Submit (Left z) = (Left z, Nothing)
-    update (Value z) _ = (z, Nothing)
+    update (Right z) Submit = (s0, Just z)
+    update (Left []) Submit = (Left ["Pease fill the form"], Nothing)
+    update (Left z) Submit = (Left z, Nothing)
+    update _ (Value z) = (z, Nothing)
     vw : MError a -> View (FormEvent (MError a))
     vw z =
       ajaxForm $ (f z) ++ (concat $ map (d . t) $ errors z)
@@ -106,7 +106,7 @@ formBind {a} {k} (MkForm kZ selVw) f kForm kCons getK =
     foldV (Left x) = vK (Left x)
     foldV (Right (x, y)) = vK (Right x) ++ subV x y
     upd : FoldState -> FoldState -> (FoldState, Maybe (MError a))
-    upd x y =
+    upd y x =
       ( x
       , case x of
             Right (_, Right w) => Just $ Right w
@@ -133,9 +133,9 @@ tupleForm {a} {b} (MkForm z1 v1) (MkForm z2 v2) =
     FoldState = (MError a, MError b)
     foldVw : FoldState -> View (Either (MError a) (MError b))
     foldVw (x, y) = (Left <$> v1 x) ++ (Right <$> v2 y)
-    upd : Either (MError a) (MError b) -> FoldState -> (FoldState, Maybe (MError (a,b)))
-    upd (Left x) (_,z) = ((x, z), Just $ joinMErrors MkPair x z)
-    upd (Right x) (z,_) = ((z, x), Just $ joinMErrors MkPair z x)
+    upd : FoldState -> Either (MError a) (MError b) -> (FoldState, Maybe (MError (a,b)))
+    upd (_,z) (Left x) = ((x, z), Just $ joinMErrors MkPair x z)
+    upd (z,_) (Right x) = ((z, x), Just $ joinMErrors MkPair z x)
     theFold : Maybe (FoldState->FoldState) -> View (MError (a,b))
     theFold = foldv (z1, z2) foldVw upd
     vw : MError (a,b) -> View (MError (a,b))

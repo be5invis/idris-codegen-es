@@ -3,6 +3,7 @@ module SimpleData
 import Data.HVect
 import Data.Vect
 import Js.ASync
+import Js.Json
 
 public export
 data Label : String -> Type -> Type where
@@ -26,6 +27,44 @@ data SDataTy : Type where
   SAlt : List (String, SDataTy) -> SDataTy
   SEither : SDataTy -> SDataTy -> SDataTy
   SMaybe : SDataTy -> SDataTy
+  SJson : SDataTy
+
+public export
+SDataObj : Type
+SDataObj = List (String, SDataTy)
+
+public export
+total
+iSDataTy : SDataTy -> Type
+iSDataTy SString = String
+iSDataTy SUnit = ()
+iSDataTy (SList x) = List (iSDataTy x)
+iSDataTy (STuple x y) = (iSDataTy x, iSDataTy y)
+iSDataTy (SObj x) = assert_total $ HVect $ fromList $ map (\z => Label (fst z) (iSDataTy $ snd z) ) x
+iSDataTy (SAlt x) = assert_total $ Alt $ fromList $ map (\z => Label (fst z) (iSDataTy $ snd z) ) x
+iSDataTy (SEither x y) = Either (iSDataTy x) (iSDataTy y)
+iSDataTy (SMaybe x) = Maybe (iSDataTy x)
+iSDataTy SJson = JsonValue
+
+
+public export
+total
+iSDataObj : SDataObj -> Type
+iSDataObj x = iSDataTy $ SObj x
+
+export
+encodeJS : (a:SDataTy) -> iSDataTy a -> JS_IO Ptr
+encodeJS SString s = jscall "%0" (String -> JS_IO Ptr) s
+
+export
+decodeJS : (a:SDataTy) -> Ptr -> JS_IO (Either String (iSDataTy a))
+decodeJS SString p =
+  do
+    c <- jscall "(typeof %0 === 'string')+0" (Ptr -> JS_IO Int) p
+    if c == 1 then
+      Right <$> jscall "%0" (Ptr -> JS_IO String) p
+      else pure $ Left "decodeVal: Not a String"
+
 {-
 sListInjective : SList x = SList y -> x = y
 sListInjective Refl = Refl
@@ -187,37 +226,3 @@ DecEq SDataTy where
   decEq (SEither x y) SUnit = No $ negEqSym sUnitNotSEither
   decEq (SEither x y) (SList w) = No $ negEqSym sListNotSEither
 -}
-public export
-SDataObj : Type
-SDataObj = List (String, SDataTy)
-
-public export
-total
-iSDataTy : SDataTy -> Type
-iSDataTy SString = String
-iSDataTy SUnit = ()
-iSDataTy (SList x) = List (iSDataTy x)
-iSDataTy (STuple x y) = (iSDataTy x, iSDataTy y)
-iSDataTy (SObj x) = assert_total $ HVect $ fromList $ map (\z => Label (fst z) (iSDataTy $ snd z) ) x
-iSDataTy (SAlt x) = assert_total $ Alt $ fromList $ map (\z => Label (fst z) (iSDataTy $ snd z) ) x
-iSDataTy (SEither x y) = Either (iSDataTy x) (iSDataTy y)
-iSDataTy (SMaybe x) = Maybe (iSDataTy x)
-
-
-public export
-total
-iSDataObj : SDataObj -> Type
-iSDataObj x = iSDataTy $ SObj x
-
-export
-encodeJS : (a:SDataTy) -> iSDataTy a -> JS_IO Ptr
-encodeJS SString s = jscall "%0" (String -> JS_IO Ptr) s
-
-export
-decodeJS : (a:SDataTy) -> Ptr -> JS_IO (Either String (iSDataTy a))
-decodeJS SString p =
-  do
-    c <- jscall "(typeof %0 === 'string')+0" (Ptr -> JS_IO Int) p
-    if c == 1 then
-      Right <$> jscall "%0" (Ptr -> JS_IO String) p
-      else pure $ Left "decodeVal: Not a String"

@@ -27,7 +27,7 @@ never = MkASync (\onevt => pure ())
 
 export
 error : String -> ASync a
-error s = MkASync (\_ => putStr' s)
+error s = MkASync (\_ => jscall "throw2(%0)" (String -> JS_IO ()) s)
 
 export
 liftJS_IO : JS_IO a -> ASync a

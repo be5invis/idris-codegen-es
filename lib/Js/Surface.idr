@@ -27,6 +27,21 @@ export
 card : Attribute
 card = css "card"
 
+export
+modal : Typeable a => View a -> (a -> View b) -> View b
+modal {a} {b} x f =
+  foldv
+    Nothing
+    render
+    upd
+    Nothing
+  where
+    render : Maybe a -> View (Either (Maybe a) b)
+    render Nothing = Left <$> (Just <$> x)
+    render (Just y) = (Left <$> (Just <$> x)) ++ div [css "modal-content g--4"] (Right <$> f y)
+    upd : Maybe a -> Either (Maybe a) b -> (Maybe a, Maybe b)
+    upd _ (Left z) = (z, Nothing)
+    upd _ (Right w) = (Nothing, Just w)
 
 export
 tabbedApps : List Attribute -> AppGroup ts -> Vect (length ts) String ->

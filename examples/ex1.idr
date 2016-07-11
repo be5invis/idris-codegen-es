@@ -5,7 +5,7 @@ import Data.Vect
 
 vw : String -> View String
 vw s =
-  (div $ buildForm' textForm) ++ text s
+  (d $ buildForm (Just $ FormSetVal s) (addSubmit "Submit" $ textForm)) ++ t s
 
 page : SimpleApp String String
 page = MkSimpleApp

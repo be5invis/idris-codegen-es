@@ -1,7 +1,7 @@
 module Js.ServiceTypes
 
 import public Js.Json
-import public Data.Vect
+import public Data.List
 
 
 public export
@@ -16,7 +16,7 @@ data Service : String -> ServiceTy -> Type where
   RPCService : (s:String) -> EncoderDecoder a -> EncoderDecoder b -> Service s (RPCServiceTy a b)
 
 public export
-data ServiceGroup : Vect k (String, ServiceTy) -> Type where
+data ServiceGroup : List (String, ServiceTy) -> Type where
   Nil : ServiceGroup []
   (::) : Service s t -> ServiceGroup ts -> ServiceGroup ((s,t)::ts)
 

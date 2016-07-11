@@ -23,9 +23,6 @@ hereEvent x = (\y => (PathHere, y)) <$> x
 hereEventStr : DomEvent String -> DomEvent ViewEvent
 hereEventStr x = (\y => (PathHere, believe_me y)) <$> x
 
-hereEventMaybeDomFile : DomEvent (Maybe DomFile) -> DomEvent ViewEvent
-hereEventMaybeDomFile x = (\y => (PathHere, believe_me y)) <$> x
-
 leftEvent : ViewEvent -> ViewEvent
 leftEvent (p, s) = (PathLeft p,s)
 
@@ -35,32 +32,81 @@ rightEvent (p, s) = (PathRight p, s)
 public export
 data FormEvent a = Value a | Submit
 
+data InputNodeType : Type -> Type where
+  Text : InputNodeType String
+  FileSelector : InputNodeType (Maybe DomFile)
+  Select : (Vect n String) -> InputNodeType (Fin n)
+
+hereEventInput : InputNodeType a -> DomEvent (Maybe a) -> DomEvent ViewEvent
+hereEventInput _ x = (\y => (PathHere, believe_me y)) <$> x
+
+setValInput : a -> InputNodeType a -> DomNode -> JS_IO ()
+setValInput x Text node = setValue x node
+setValInput x (Select opts) node = setValue (cast $ finToInteger x) node
+
+addOption : DomNode -> (Fin n, String) -> JS_IO ()
+addOption n (v, l) =
+  do
+    o <- appendNode "option" n
+    setValue (cast $ finToInteger v) o
+    setText l o
+
+initInput : DomNode -> Nat -> InputNodeType a -> JS_IO DomNode
+initInput container pos Text =
+  do
+    i <- insertNodePos "input" container pos
+    setAttribute i ("type","text")
+    pure i
+initInput container pos (Select options) =
+  do
+    s <- insertNodePos "select" container pos
+    let options' = Data.Vect.zip range options
+    sequence $ map (\x=> addOption s x) options'
+    pure s
+initInput container pos FileSelector =
+  do
+    i <- insertNodePos "input" container pos
+    setAttribute i ("type","file")
+    pure i
+
+updateInput : DomNode -> Nat -> InputNodeType a -> InputNodeType b -> JS_IO ()
+updateInput container pos Text Text = pure ()
+updateInput container pos FileSelector FileSelector = pure ()
+updateInput container pos (Select o1) (Select o2) =
+  if toList o1 == toList o2 then pure ()
+    else
+      do
+        removeChild pos container
+        initInput container pos (Select o2)
+        pure ()
+
+inputChangeEvent : InputNodeType a -> DomEvent (Maybe a)
+inputChangeEvent Text = Just <$> targetValue
+inputChangeEvent (Select opts {n}) = (\x => integerToFin (the Integer $ cast x) n ) <$> targetValue
+inputChangeEvent FileSelector = Just <$> targetFile
+
 export
 data View : Type -> Type where
   EmptyNode : View a
   TextNode : String -> List (String, Maybe a) -> List (String, String) -> String -> View a
-  InputNode : Maybe String -> View String
+  InputNode : Maybe a -> InputNodeType a -> View a
   AppendNode : View a -> View a -> View a
   MapNode : (a -> Maybe b) -> View a -> View b
   AjaxFormNode : View a -> View (FormEvent a)
   ContainerNode : String -> List (String, Maybe a) -> List (String, String) -> View a -> View a
-  FoldNode : Typeable b => b -> View a -> (b -> View a) -> (a->b->(b, Maybe c)) -> Maybe (b->b) -> View c
-  SelectNode : Maybe (Fin n) -> Vect n String -> View (Fin n)
+  FoldNode : Typeable b => b -> View a -> (b -> View a) -> (b->a->(b, Maybe c)) -> Maybe (b->b) -> View c
   UniqIdNode : (Int->View a) -> Maybe (Int, View a) -> View a
-  FileSelectorNode : View (Maybe DomFile)
 
 vLength : View a -> Nat
 vLength EmptyNode = 0
 vLength (TextNode _ _ _ _) = 1
-vLength (InputNode _) = 1
+vLength (InputNode _ _) = 1
 vLength (AppendNode v1 v2) = vLength v1 + vLength v2
 vLength (MapNode _ v) = vLength v
 vLength (AjaxFormNode _) = 1
 vLength (ContainerNode _ _ _ _) = 1
 vLength (FoldNode _ v _ _ _) = vLength v
-vLength (SelectNode _ _) = 1
 vLength (UniqIdNode _ (Just (_, v))) = vLength v
-vLength FileSelectorNode = 1
 
 public export
 data App : (a:Type) -> (a->Type) -> Type -> Type where
@@ -187,7 +233,6 @@ mutual
     if t1 == t2 then
       do
         c <- vctxNode 0 vctx
-        --v3 <- updateNodeView (enterNode c $ leftPart vctx) v1 v2
         if txt1 == txt2 then pure ()
           else
             setText txt2 c
@@ -199,13 +244,17 @@ mutual
       else do
         removeView vctx vi
         initViewDom vctx vf
-  updateNodeView vctx (InputNode _) (InputNode force) =
-    case force of
-      Nothing => pure $ InputNode Nothing
-      Just s =>
-        do
-          setValue s !(vctxNode 0 vctx)
-          pure $ InputNode Nothing
+  updateNodeView vctx (InputNode _ t1 ) (InputNode force t2) =
+    do
+      c <- vctxNode 0 vctx
+      updateInput (container vctx) (position vctx) t1 t2
+      case force of
+        Nothing =>
+          pure $ InputNode Nothing t2
+        Just s =>
+          do
+            setValInput s t2 c
+            pure $ InputNode Nothing t2
   updateNodeView vctx (AppendNode x y) (AppendNode z w) =
     do
       v1 <- updateNodeView (leftPart vctx) x z
@@ -235,36 +284,16 @@ mutual
       let s3 = updateFoldNodeState u s1 s2
       v2 <- updateNodeView vctx v1 (vf s3)
       pure $ FoldNode s3 v2 vf f Nothing
-  updateNodeView vctx vi@(SelectNode _ o1) vf@(SelectNode force o2) =
-    if toList o1 == toList o2 then
-      case force of
-        Nothing => pure vf
-        Just x =>
-          do
-            setValue (cast $ finToInteger x) !(vctxNode 0 vctx)
-            pure vf
-      else
-        do
-          removeView vctx vi
-          initViewDom vctx vf
   updateNodeView vctx (UniqIdNode _ (Just (id,vOld))) (UniqIdNode r _) =
     do
       vNew <- updateNodeView vctx vOld (r id)
       pure $ UniqIdNode r (Just (id, vNew))
-  updateNodeView vctx FileSelectorNode FileSelectorNode =
-    pure FileSelectorNode
   updateNodeView vctx vi vf =
     do
       removeView vctx vi
       initViewDom vctx vf
 
 
-  addOption : DomNode -> (Fin n, String) -> JS_IO ()
-  addOption n (v, l) =
-    do
-      o <- appendNode "option" n
-      setValue (cast $ finToInteger v) o
-      setText l o
 
   initViewDom : ViewContext -> View c -> JS_IO (View c)
   initViewDom vctx EmptyNode = pure EmptyNode
@@ -274,16 +303,15 @@ mutual
       addEvents vctx c (map fst events)
       setAttrs c attributes
       setText txt c
-      --v1 <- initViewDom (enterNode c $ leftPart vctx) v
       pure $ TextNode tag events attributes txt
-  initViewDom vctx (InputNode force) =
+  initViewDom vctx (InputNode force t) =
     do
-      i <- insertNodePos "input" (container vctx) (position vctx)
-      registEvent (procEvent vctx) i "change" ( eventPath vctx <$> hereEventStr targetValue)
+      i <- initInput (container vctx) (position vctx) t
+      registEvent (procEvent vctx) i "change" (eventPath vctx <$> hereEventInput t (inputChangeEvent t))
       case force of
         Nothing => pure ()
-        Just s => setValue s i
-      pure $ InputNode force
+        Just s => setValInput s t i
+      pure $ InputNode Nothing t
   initViewDom vctx (AppendNode x y) =
     do
       v1 <- initViewDom (leftPart vctx) x
@@ -307,34 +335,18 @@ mutual
     do
       v1 <- initViewDom vctx v
       pure $ FoldNode a1 v1 a2 a3 a4
-  initViewDom vctx (SelectNode force options) =
-    do
-      s <- insertNodePos "select" (container vctx) (position vctx)
-      let options' = Data.Vect.zip range options
-      sequence $ map (\x=> addOption s x) options'
-      registEvent (procEvent vctx) s "change" (eventPath vctx <$> hereEventStr targetValue)
-      case force of
-        Nothing => pure ()
-        Just x => setValue (cast $ finToInteger x) s
-      pure $ SelectNode force options
   initViewDom vctx (UniqIdNode r Nothing) =
     do
       id <- genId
       v <- initViewDom vctx (r id)
       pure (UniqIdNode r (Just (id, v)) )
-  initViewDom vctx FileSelectorNode =
-    do
-      i <- insertNodePos "input" (container vctx) (position vctx)
-      setAttribute i ("type","file")
-      registEvent (procEvent vctx) i "change" (eventPath vctx <$> hereEventMaybeDomFile targetFile)
-      pure FileSelectorNode
 
 
   updateNodeEvent : ViewContext -> ViewEvent -> View a -> JS_IO (View a, Maybe a)
   updateNodeEvent vctx (PathHere, e)  c@(TextNode _ evts _ _) =
       pure (c, join $ lookup (believe_me e) evts)
-  updateNodeEvent vctx (PathHere, e) (InputNode f) =
-    pure (InputNode Nothing, Just $ believe_me e)
+  updateNodeEvent vctx (PathHere, e) (InputNode _ t) =
+    pure (InputNode Nothing t, believe_me e)
   updateNodeEvent vctx (PathLeft x, e) (AppendNode y z) =
     do
       (ny, v) <- updateNodeEvent (leftPart vctx) (x,e) y
@@ -367,18 +379,13 @@ mutual
           pure (FoldNode s v vf f Nothing, Nothing)
         Just y =>
           do
-            let (s2, z) = f y s
+            let (s2, z) = f s y
             v3 <- updateNodeView vctx v2 (vf s2)
             pure (FoldNode s2 v3 vf f Nothing, z)
-  updateNodeEvent vctx (PathHere, e) (SelectNode _ options) =
-    let i = the Integer $ cast (the String $ believe_me e)
-    in pure (SelectNode Nothing options, integerToFin i _)
   updateNodeEvent vctx e (UniqIdNode r (Just (id, v)) ) =
     do
       (v2, x) <- updateNodeEvent vctx e v
       pure (UniqIdNode r $ Just (id, v2), x)
-  updateNodeEvent vctx (PathHere, e) FileSelectorNode =
-    pure (FileSelectorNode, believe_me e)
   updateNodeEvent vctx (p, e) v =
     do
       putStr' $ "Internal error processing events on path" ++ show p
@@ -466,7 +473,7 @@ export
 (++) x y = AppendNode x y
 
 export
-foldv : Typeable b => b -> (b->View a) -> (a->b->(b, Maybe c)) -> Maybe (b->b) -> View c
+foldv : Typeable b => b -> (b->View a) -> (b-> a ->(b, Maybe c)) -> Maybe (b->b) -> View c
 foldv x y f z =
   case z of
     Just w => FoldNode (w x) (y $ w x) y f z
@@ -482,11 +489,11 @@ textNode x y z k = TextNode x (map (\(m,n)=>(m, Just n)) y) z k
 
 export
 inputNode : Maybe String -> View String
-inputNode = InputNode
+inputNode x = InputNode x (Text)
 
 export
 selectNode : Maybe (Fin n) -> Vect n String -> View (Fin n)
-selectNode = SelectNode
+selectNode x o = InputNode x (Select o)
 
 export
 ajaxFormNode : View a -> View (FormEvent a)
@@ -502,4 +509,4 @@ empty = EmptyNode
 
 export
 fileSelectorNode : View (Maybe DomFile)
-fileSelectorNode = FileSelectorNode
+fileSelectorNode = InputNode Nothing FileSelector

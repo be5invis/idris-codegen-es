@@ -90,7 +90,12 @@ trampoline = T.concat [ "var idris_trampoline = function(val){\n"
                       , "}\n"
                       ]
 
-start = T.concat [trampoline,"\n\nidris_trampoline", "(", jsName (sMN 0 "runMain"), "());"]
+throw2 = T.concat [ "var throw2 = function (x){\n"
+                  , " throw x;\n"
+                  , "}\n\n"
+                  ]
+
+start = T.concat [throw2,trampoline,"\n\nidris_trampoline", "(", jsName (sMN 0 "runMain"), "());"]
 
 
 jsName :: Name -> Text

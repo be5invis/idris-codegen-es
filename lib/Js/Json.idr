@@ -1,4 +1,4 @@
-module Json
+module Js.Json
 
 import public Lightyear
 import public Lightyear.Char
@@ -6,7 +6,7 @@ import public Lightyear.Strings
 
 import public Data.SortedMap
 
-export
+public export
 data JsonValue = JsonString String
                | JsonNumber Double
                | JsonBool Bool
@@ -166,6 +166,14 @@ FromJson JsonValue where
 export
 ToJson JsonValue where
   toJson = id
+
+export
+FromJson () where
+  fromJson JsonNull = Right ()
+
+export
+ToJson () where
+  toJson () = JsonNull
 
 export
 decode : FromJson a => String -> Either String a

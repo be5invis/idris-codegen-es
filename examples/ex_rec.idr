@@ -17,7 +17,7 @@ Show TstExp where
 
 
 indentV : Nat -> View a -> View a
-indentV i x = div $ text (pack $ the (List Char) $ replicate i '-') ++ x
+indentV i x = d $ t (pack $ the (List Char) $ replicate i '-') ++ x
 
 indentF : Nat -> Form a -> Form a
 indentF i = vtrans (indentV i)
@@ -47,13 +47,13 @@ tstForm i =
     getK (Plus x y) = (2 ** (x,y))
 
 vw : TstExp -> View TstExp
-vw x = div $ (buildForm (Just $ FormSetVal x) $ addSubmit "Submit" $ tstForm 0)
-           ++ div (text $ show x)
+vw x = d $ (buildForm (Just $ FormSetVal x) $ addSubmit "Submit" $ tstForm 0)
+           ++ d (t $ show x)
 
 
 page : SimpleApp TstExp TstExp
 page = MkSimpleApp
-        (Plus (Pos 6) (Neg 7))
+        (Pos 6)
         vw
         (\x, y => (y, never))
 

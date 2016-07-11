@@ -9,11 +9,37 @@ require : String -> JS_IO Ptr
 require s = jscall "require(%0)" (String -> JS_IO Ptr) s
 
 export
+handleErr : ASync Ptr -> ASync Ptr
+handleErr x  =
+  do
+    y <- x
+    errQ <- liftJS_IO $ jscall "%0[0] ? 1 : 0" (Ptr -> JS_IO Int) y
+    if errQ == 1 then
+      do
+        msg <- liftJS_IO $ jscall "%0[0] + ''" (Ptr -> JS_IO String) y
+        error msg
+      else
+        liftJS_IO $ jscall "%0[1]" (Ptr -> JS_IO Ptr) y
+
+export
 readFileSync : String -> JS_IO String
 readFileSync file =
   do
     fs <- require "fs"
     jscall "%0.readFileSync(%1)" (Ptr -> String -> JS_IO String) fs file
+
+export
+readFile : String -> ASync String
+readFile f =
+  do
+    fs <- liftJS_IO $ require "fs"
+    map (\x => the String (believe_me x)) $ handleErr $ MkASync $ \proc =>
+      jscall
+        "%0.readFile(%1, function(e,c){%2([e,c])} )"
+        (Ptr -> String -> JsFn (Ptr -> JS_IO ()) -> JS_IO () )
+        fs
+        f
+        (MkJsFn $ proc)
 
 export
 data Request = MkRequest Ptr
@@ -49,12 +75,12 @@ handlerSelector (HandlePost s _) = "POST" ++ s
 
 total
 public export
-ImplementationTy : ServiceTy -> Type
-ImplementationTy (RPCServiceTy a b) = (a -> ASync b)
-ImplementationTy (FeedServiceTy a b) = (a -> ASync b)
+ImplementationTy : Type -> ServiceTy -> Type
+ImplementationTy t (RPCServiceTy a b) = (t -> a -> ASync b)
+ImplementationTy t (FeedServiceTy a b) = (t -> a -> ASync b)
 
-makeRawServ : Service name st -> ImplementationTy st -> HttpHandler
-makeRawServ (RPCService name e1 e2) f =
+makeRawServ : t -> Service name st -> ImplementationTy t st -> HttpHandler
+makeRawServ context (RPCService name e1 e2) f =
   HandlePost name $ \x =>
         case decode e1 x of
           --Left z => do
@@ -62,21 +88,21 @@ makeRawServ (RPCService name e1 e2) f =
           --  liftJS_IO $ putStr' z
           --  pure $ Left 400
           Right z =>
-            encode e2 <$> f z
+            encode e2 <$> f context z
 
 total
 public export
-MakeServicesTy : Vect k (String, ServiceTy) -> Type
-MakeServicesTy [] = List HttpHandler
-MakeServicesTy ((_,st)::xs) = ImplementationTy st -> MakeServicesTy xs
+MakeServicesTy : Type -> List (String, ServiceTy) -> Type
+MakeServicesTy t [] = List HttpHandler
+MakeServicesTy t ((_,st)::xs) = ImplementationTy t st -> MakeServicesTy t xs
 
-makeServices' : ServiceGroup ts -> List HttpHandler -> MakeServicesTy ts
-makeServices' [] acc = acc
-makeServices' (x::xs) acc = \next => makeServices' xs (makeRawServ x next :: acc )
+makeServices' : t -> ServiceGroup ts -> List HttpHandler -> MakeServicesTy t ts
+makeServices' _ [] acc = acc
+makeServices' ctx (x::xs) acc = \next => makeServices' ctx xs (makeRawServ ctx x next :: acc )
 
 export
-makeServices : ServiceGroup ts -> MakeServicesTy ts
-makeServices x = makeServices' x []
+makeServices : ServiceGroup ts -> t -> MakeServicesTy t ts
+makeServices x ctx = makeServices' ctx x []
 
 procInput : Request -> (String -> ASync String) -> String -> JS_IO ()
 procInput (MkRequest p) f body =
@@ -114,20 +140,21 @@ procReqRaw handlers r@(MkRequest p) = do
           (MkJsFn $ procInput r x)
 
 export
-runServer : Int -> List HttpHandler -> JS_IO ()
+runServer : Int -> List HttpHandler -> ASync ()
 runServer port services =
   do
-    http <- require "http"
-    server <- jscall
+    http <- liftJS_IO $ require "http"
+    server <- liftJS_IO $ jscall
                   "%0.createServer(function(req, res){return %1([req,res])})"
                   (Ptr -> (JsFn (Ptr -> JS_IO ())) -> JS_IO Ptr )
                   http
                   (MkJsFn $ \x => procReqRaw servMap (MkRequest x))
-    jscall
-      "%1.listen(%0, function(){console.log('Server listening on: http://localhost:%s', %0)})"
-      (Int -> Ptr -> JS_IO ())
+    MkASync $ \proc => jscall
+      "%1.listen(%0, %2)"
+      (Int -> Ptr -> JsFn (() -> JS_IO ()) -> JS_IO ())
       port
       server
+      (MkJsFn proc)
   where
     servMap : SortedMap String (HttpHandler)
     servMap = fromList $ zip (map handlerSelector services) services
