@@ -7,6 +7,7 @@ public export
 data TypeRep : Type -> Type where
   TRString : TypeRep String
   TRInteger : TypeRep Integer
+  TUnit : TypeRep ()
   TRCons : String -> List String -> (a: Type) -> TypeRep a
   TRCons1 : String -> List String -> (a: Type) -> (f: Type->Type) -> TypeRep a -> TypeRep (f a)
   TRCons2 : String -> List String -> (a: Type) -> (b: Type) -> (f: Type->Type->Type) ->
@@ -16,6 +17,7 @@ data TypeRep : Type -> Type where
 same : TypeRep a -> TypeRep b -> Bool
 same TRString TRString = True
 same TRInteger TRInteger = True
+same TUnit TUnit = True
 same (TRCons x1 y1 _) (TRCons x2 y2 _) = x1 == x2 && y1 == y2
 same (TRCons1 x1 y1 _ _ z1) (TRCons1 x2 y2 _ _ z2) = x1 == x2 && y1 == y2 && same z1 z2
 same (TRCons2 x1 y1 _ _ _ z1 w1) (TRCons2 x2 y2 _ _ _ z2 w2) = x1 == x2 && y1 == y2 && same z1 z2 && same w1 w2
@@ -107,6 +109,10 @@ Typeable Integer where
 export
 Typeable Bool where
   getTypeRep = %runElab deriveTypeable
+
+export
+Typeable () where
+  getTypeRep = TUnit
 
 export
 Typeable Nat where

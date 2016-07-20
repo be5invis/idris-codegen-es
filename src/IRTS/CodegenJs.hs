@@ -83,8 +83,8 @@ codegenJs ci = do
 
 trampoline = T.concat [ "var idris_trampoline = function(val){\n"
                       , "   var res = val;\n"
-                      , "   while(res && res.call){\n"
-                      , "     res = res.call.apply(this, res.args);\n"
+                      , "   while(res && res.call_trampoline_idrisjs){\n"
+                      , "     res = res.call_trampoline_idrisjs.apply(this, res.args);\n"
                       , "   }\n"
                       , "   return res\n"
                       , "}\n"

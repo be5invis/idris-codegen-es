@@ -33,7 +33,7 @@ public export
 data FormEvent a = Value a | Submit
 
 data InputNodeType : Type -> Type where
-  Text : InputNodeType String
+  Text : String -> InputNodeType String
   FileSelector : InputNodeType (Maybe DomFile)
   Select : (Vect n String) -> InputNodeType (Fin n)
 
@@ -41,7 +41,7 @@ hereEventInput : InputNodeType a -> DomEvent (Maybe a) -> DomEvent ViewEvent
 hereEventInput _ x = (\y => (PathHere, believe_me y)) <$> x
 
 setValInput : a -> InputNodeType a -> DomNode -> JS_IO ()
-setValInput x Text node = setValue x node
+setValInput x (Text _) node = setValue x node
 setValInput x (Select opts) node = setValue (cast $ finToInteger x) node
 
 addOption : DomNode -> (Fin n, String) -> JS_IO ()
@@ -52,10 +52,11 @@ addOption n (v, l) =
     setText l o
 
 initInput : DomNode -> Nat -> InputNodeType a -> JS_IO DomNode
-initInput container pos Text =
+initInput container pos (Text placeholder) =
   do
     i <- insertNodePos "input" container pos
     setAttribute i ("type","text")
+    setAttribute i ("placeholder", placeholder)
     pure i
 initInput container pos (Select options) =
   do
@@ -70,7 +71,12 @@ initInput container pos FileSelector =
     pure i
 
 updateInput : DomNode -> Nat -> InputNodeType a -> InputNodeType b -> JS_IO ()
-updateInput container pos Text Text = pure ()
+updateInput container pos (Text p1) (Text p2) =
+  if p1 == p2 then pure ()
+    else
+      do
+        Just c <- child pos container
+        setAttribute c ("placeholder", p2)
 updateInput container pos FileSelector FileSelector = pure ()
 updateInput container pos (Select o1) (Select o2) =
   if toList o1 == toList o2 then pure ()
@@ -81,7 +87,7 @@ updateInput container pos (Select o1) (Select o2) =
         pure ()
 
 inputChangeEvent : InputNodeType a -> DomEvent (Maybe a)
-inputChangeEvent Text = Just <$> targetValue
+inputChangeEvent (Text _) = Just <$> targetValue
 inputChangeEvent (Select opts {n}) = (\x => integerToFin (the Integer $ cast x) n ) <$> targetValue
 inputChangeEvent FileSelector = Just <$> targetFile
 
@@ -376,7 +382,7 @@ mutual
       (v2, x) <- updateNodeEvent vctx e v
       case x of
         Nothing =>
-          pure (FoldNode s v vf f Nothing, Nothing)
+          pure (FoldNode s v2 vf f Nothing, Nothing)
         Just y =>
           do
             let (s2, z) = f s y
@@ -438,15 +444,6 @@ runApp' {a} {f} {b} async app =
 export
 runApp : App a f b -> JS_IO ()
 runApp = runApp' never
-{-  do
-    c <- body
-    ctxPtr <- jscall "{}" (() -> JS_IO Ptr) ()
-    let ctx = the (Ctx a f b) $ MkCtx ctxPtr
-    let v = renderApp app
-    v1 <- initView ctx c v
-    let appSt = MkAppState app v1 c
-    setAppState ctx $ appSt
--}
 
 -------- View Instances ----
 export
@@ -488,8 +485,8 @@ textNode : String -> List (String, a) -> List (String, String) -> String -> View
 textNode x y z k = TextNode x (map (\(m,n)=>(m, Just n)) y) z k
 
 export
-inputNode : Maybe String -> View String
-inputNode x = InputNode x (Text)
+textinputNode : String -> Maybe String -> View String
+textinputNode placeholder x = InputNode x (Text placeholder)
 
 export
 selectNode : Maybe (Fin n) -> Vect n String -> View (Fin n)

@@ -32,14 +32,13 @@ export
 readFile : String -> ASync String
 readFile f =
   do
-    fs <- liftJS_IO $ require "fs"
     map (\x => the String (believe_me x)) $ handleErr $ MkASync $ \proc =>
-      jscall
-        "%0.readFile(%1, function(e,c){%2([e,c])} )"
-        (Ptr -> String -> JsFn (Ptr -> JS_IO ()) -> JS_IO () )
-        fs
-        f
-        (MkJsFn $ proc)
+      do
+        jscall
+          "require('fs').readFile(%0, 'utf8', function(e,c){%1([e,c])} )"
+          (String -> JsFn (Ptr -> JS_IO ()) -> JS_IO () )
+          f
+          (MkJsFn $ proc)
 
 export
 data Request = MkRequest Ptr

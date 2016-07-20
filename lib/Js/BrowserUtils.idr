@@ -211,7 +211,7 @@ li attrs x = container "ul" [] attrs x
 
 export
 textinput : Maybe String -> View String
-textinput x = inputNode x
+textinput x = textinputNode "" x
 
 export
 textinput' : View String
@@ -240,3 +240,20 @@ submitButton x = containerNode "input" [] [("type","submit"),("value",x)] $ empt
 export
 fileSelector : View (Maybe DomFile)
 fileSelector = fileSelectorNode
+
+
+export
+viewBind : Typeable a => View a -> (a -> View b) -> View b
+viewBind {a} {b} x f =
+  foldv
+    Nothing
+    render
+    upd
+    Nothing
+  where
+    render : Maybe a -> View (Either (Maybe a) b)
+    render Nothing = Left <$> (Just <$> x)
+    render (Just y) = (Left <$> (Just <$> x)) ++ div [] (Right <$> f y)
+    upd : Maybe a -> Either (Maybe a) b -> (Maybe a, Maybe b)
+    upd _ (Left z) = (z, Nothing)
+    upd _ (Right w) = (Nothing, Just w)

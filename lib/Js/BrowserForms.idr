@@ -6,11 +6,11 @@ import Js.BrowserBase
 import Js.BrowserUtils
 import Data.Vect
 
-export
+public export
 TyError : Type
 TyError = List String
 
-export
+public export
 MError : Type -> Type
 MError a = Either TyError a
 
@@ -23,7 +23,7 @@ joinMErrors : (a -> b -> c) ->  MError a -> MError b -> MError c
 joinMErrors f (Right x) (Right y) = Right $ f x y
 joinMErrors _ x         y         = Left $ errors x ++ errors y
 
-export
+public export
 data Form : Type -> Type where
   MkForm : Typeable a => MError a -> (MError a -> View (MError a)) -> Form a
 
@@ -45,6 +45,7 @@ buildForm {a} x (MkForm s0 f) =
     update
     ((\y => \_=> g y) <$> x)
   where
+    g: FormUpdate a -> MError a
     g ResetForm = s0
     g (FormSetVal y) = Right y
     update (Right z) Submit = (s0, Just z)

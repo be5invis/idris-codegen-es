@@ -3,6 +3,8 @@ module Js.Surface
 import Js.Browser
 import Data.Vect
 
+import Debug.Trace
+
 public export
 data BtnColor = BtnRed | BtnYellow | BtnGreen | BtnBlue | BtnPrimary | BtnSecondary | BtnAccent
 
@@ -28,20 +30,23 @@ card : Attribute
 card = css "card"
 
 export
-modal : Typeable a => View a -> (a -> View b) -> View b
-modal {a} {b} x f =
-  foldv
-    Nothing
-    render
-    upd
-    Nothing
+textinputP : String -> Maybe String -> View String
+textinputP = textinputNode
+
+export
+textinputP' : String -> View String
+textinputP' x = textinputNode x Nothing
+
+export
+textFormP : String -> Form String
+textFormP placeholder =
+  MkForm
+    (Right "")
+    vw
   where
-    render : Maybe a -> View (Either (Maybe a) b)
-    render Nothing = Left <$> (Just <$> x)
-    render (Just y) = (Left <$> (Just <$> x)) ++ div [css "modal-content g--4"] (Right <$> f y)
-    upd : Maybe a -> Either (Maybe a) b -> (Maybe a, Maybe b)
-    upd _ (Left z) = (z, Nothing)
-    upd _ (Right w) = (Nothing, Just w)
+    vw (Right x) = Right <$> (textinputP placeholder $ Just x)
+    vw (Left _) = Right <$> textinputP' placeholder
+
 
 export
 tabbedApps : List Attribute -> AppGroup ts -> Vect (length ts) String ->

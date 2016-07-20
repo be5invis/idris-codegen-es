@@ -18,7 +18,7 @@ connect' : String -> Int -> ASync Connection
 connect' host port =
   do
     r <- liftJS_IO $ require "rethinkdb"
-    map (MkConnection r) $ handleErr $ MkASync $ \proc =>
+    c <- handleErr $ MkASync $ \proc =>
       jscall
         "%0.connect({'host': %1,'port': %2}, function(e,c){%3([e,c])}  ) "
         (Ptr -> String -> Int -> JsFn (Ptr -> JS_IO ()) -> JS_IO () )
@@ -26,6 +26,7 @@ connect' host port =
         host
         port
         (MkJsFn proc)
+    pure $ MkConnection r c
 
 
 export

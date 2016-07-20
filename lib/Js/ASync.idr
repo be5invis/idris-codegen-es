@@ -12,7 +12,10 @@ data ASync : Type -> Type where
 
 export
 setASync : (a -> JS_IO ()) -> ASync a -> JS_IO ()
-setASync onEvent (MkASync set) = set onEvent
+setASync onEvent (MkASync set) =
+  do
+    set onEvent
+    pure ()
 
 export
 total
