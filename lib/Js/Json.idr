@@ -4,6 +4,7 @@ import public Lightyear
 import public Lightyear.Char
 import public Lightyear.Strings
 
+import Pruviloj.Core
 import public Data.SortedMap
 
 public export
@@ -14,6 +15,18 @@ data JsonValue = JsonString String
                | JsonArray (List JsonValue)
                | JsonObject (SortedMap String JsonValue)
 
+{-
+export
+Eq JsonValue where
+  (==) (JsonString x) (JsonString y) = x == y
+  (==) (JsonNumber x) (JsonNumber y) = x == y
+  (==) JsonNull JsonNull = True
+  (==) (JsonArray x) (JsonArray y) = x == y
+  (==) (JsonObject x) (JsonObject y) = toList x == toList y
+  (==) _ _ = False
+-}
+
+export
 Show JsonValue where
   show (JsonString s)   = show s
   show (JsonNumber x)   = show x
@@ -134,11 +147,11 @@ export
 parsJson : String -> Either String JsonValue
 parsJson s = parse jsonValue s
 
-export
+public export
 interface ToJson a where
   toJson : a -> JsonValue
 
-export
+public export
 interface FromJson a where
   fromJson : JsonValue -> Either String a
 
@@ -148,7 +161,6 @@ interface (ToJson a, FromJson a) => BothJson a where
 
 export
 (ToJson a, FromJson a) => BothJson a where
-
 
 export
 FromJson String where
@@ -174,6 +186,38 @@ FromJson () where
 export
 ToJson () where
   toJson () = JsonNull
+
+export
+ToJson a => ToJson (List a) where
+  toJson x = JsonArray $ map toJson x
+
+export
+FromJson a => FromJson (List a) where
+  fromJson (JsonArray x) = sequence $ map fromJson x
+
+export
+ToJson a => ToJson (Vect n a) where
+  toJson x = JsonArray $ toList $ map toJson x
+
+vectFromJson : FromJson a => JsonValue -> Either String (Vect n a)
+vectFromJson {n} {a} (JsonArray x) =
+  let p1 = the (List (Either String a)) $ map fromJson x
+      p2 = sequence $ fromList p1
+  in case exactLength n <$> p2 of
+        Right (Just z) => Right z
+
+export
+FromJson a => FromJson (Vect n a) where
+  fromJson = vectFromJson
+
+export
+(ToJson a, ToJson b) => ToJson (a,b) where
+  toJson (x, y) = JsonArray [toJson x, toJson y]
+
+export
+(FromJson a, FromJson b) => FromJson (a, b) where
+  fromJson (JsonArray [x, y]) = MkPair <$> fromJson x <*> fromJson y
+
 
 export
 decode : FromJson a => String -> Either String a

@@ -9,17 +9,28 @@ require : String -> JS_IO Ptr
 require s = jscall "require(%0)" (String -> JS_IO Ptr) s
 
 export
-handleErr : ASync Ptr -> ASync Ptr
-handleErr x  =
+err2Either : ASync Ptr -> ASync (Either String Ptr)
+err2Either x =
   do
     y <- x
     errQ <- liftJS_IO $ jscall "%0[0] ? 1 : 0" (Ptr -> JS_IO Int) y
     if errQ == 1 then
       do
         msg <- liftJS_IO $ jscall "%0[0] + ''" (Ptr -> JS_IO String) y
-        error msg
+        pure $ Left msg
       else
-        liftJS_IO $ jscall "%0[1]" (Ptr -> JS_IO Ptr) y
+        do
+          res <- liftJS_IO $ jscall "%0[1]" (Ptr -> JS_IO Ptr) y
+          pure $ Right res
+
+export
+handleErr : ASync Ptr -> ASync Ptr
+handleErr x  =
+  do
+    z <- err2Either x
+    case z of
+      Left e => error e
+      Right res => pure res
 
 export
 readFileSync : String -> JS_IO String
