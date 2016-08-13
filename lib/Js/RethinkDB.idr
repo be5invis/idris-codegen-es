@@ -2,9 +2,7 @@ module Js.RethinkDB
 
 import Js.ASync
 import public Js.Json
-import Data.HVect
-import Data.Vect
-import Js.SimpleData
+import public Js.SimpleData
 import Js.Node
 
 require : String -> JS_IO Ptr
@@ -35,11 +33,11 @@ connect host = connect' host 28015
 
 export
 data Table : SDataObj -> Type where
-  MkTable : String -> (a : SDataObj) -> Table a
+  MkTable : String -> String -> (a : SDataObj) -> Table a
 
 export
-table : String -> Table a
-table {a} x = MkTable x a
+table : String -> String -> Table a
+table {a} x y = MkTable x y a
 
 public export
 InsertInfo : SDataTy
@@ -47,22 +45,21 @@ InsertInfo = SObj []
 
 export
 data Query : SDataTy -> Type where
-  Insert : Table a -> List (iSDataObj a) -> Query InsertInfo
+  Insert : Table a -> List (ISDataObj a) -> Query InsertInfo
 
 
 mkQuery : Ptr -> Query a -> JS_IO Ptr
-mkQuery p (Insert (MkTable name ptype) vals) =
+mkQuery p (Insert (MkTable database name ptype) vals) =
   do
     v <- encodeJS (SList $ SObj ptype) vals
-    jscall "%0.insert(%1)" (Ptr -> Ptr -> JS_IO Ptr) p v
+    jscall "%2.db(%0).table(%1).insert(%3)" (String -> String -> Ptr -> Ptr -> JS_IO Ptr) database name p v
 
 
 export
-runQuery : String -> Connection -> Query a -> ASync (Either String (iSDataTy a))
-runQuery {a} database (MkConnection r c) q =
+runQuery' : Connection -> Query a -> ASync (Either String (ISDataTy a))
+runQuery' {a} (MkConnection r c) q =
   do
-    p <- liftJS_IO $ jscall "%0.db(%1)" (Ptr -> String -> JS_IO Ptr) r database
-    qq <- liftJS_IO $ mkQuery p q
+    qq <- liftJS_IO $ mkQuery r q
     decodeRes $ err2Either $ MkASync $ \proc =>
       jscall "%0.run(%1,function(e,c){%2([e,c])})"
         (Ptr -> Ptr -> JsFn (Ptr -> JS_IO ()) -> JS_IO () )
@@ -70,11 +67,20 @@ runQuery {a} database (MkConnection r c) q =
         c
         (MkJsFn proc)
   where
-    decodeRes : ASync (Either String Ptr) -> ASync  (Either String (iSDataTy a))
+    decodeRes : ASync (Either String Ptr) -> ASync  (Either String (ISDataTy a))
     decodeRes x =
       case !x of
           Left e => pure $ Left e
           Right y => liftJS_IO $ decodeJS a y
+
+export
+runQuery : Connection -> Query a -> ASync (ISDataTy a)
+runQuery conn q =
+  do
+    res <- runQuery' conn q
+    case res of
+      Right x => pure x
+      Left e => error e
 
 export
 createTable : String -> Connection -> String -> ASync ()
@@ -89,5 +95,10 @@ createTable database (MkConnection r c) tableName =
         c
         (MkJsFn proc)
 
-insert : Table a -> List (iSDataObj a) -> Query InsertInfo
+export
+insert : Table a -> List (ISDataObj a) -> Query InsertInfo
 insert = Insert
+
+export
+insert1 : Table a -> ISDataObj a -> Query InsertInfo
+insert1 x y = Insert x [y]
