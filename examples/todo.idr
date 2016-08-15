@@ -24,6 +24,7 @@ vw l =
 page : SimpleApp (List String) TodoAction
 page = MkSimpleApp
         start
+        never
         vw
         upd
 

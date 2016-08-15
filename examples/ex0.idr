@@ -12,6 +12,7 @@ vw s = textinput' ++ t s
 page : SimpleApp String String
 page = MkSimpleApp
           ""
+          never
           vw
           upd
 

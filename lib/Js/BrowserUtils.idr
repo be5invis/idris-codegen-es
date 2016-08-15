@@ -15,10 +15,11 @@ SimpleApp : Type -> Type -> Type
 SimpleApp a b = App a (\_=>b) b
 
 export
-MkSimpleApp : a -> (a->View b) -> (a -> b -> (a,ASync b)) -> SimpleApp a b
-MkSimpleApp z v u =
+MkSimpleApp : a -> ASync b -> (a->View b) -> (a -> b -> (a,ASync b)) -> SimpleApp a b
+MkSimpleApp z s v u =
   MkApp
     z
+    s
     v
     u
     u
@@ -68,6 +69,10 @@ stepAppGroupAsync (x :: z) (MkAlt (There p) val) =
   let (groupRest, async) = stepAppGroupAsync z (MkAlt p val)
   in (x :: groupRest, AltExpand <$> async)
 
+export
+getGroupInit : AppGroup ts -> ASync (AppGroupAsyncType ts)
+getGroupInit [] = never
+getGroupInit (x::xs) = (MkAlt Here <$> getInit x) `both` (AltExpand <$> getGroupInit xs)
 
 export
 data Attribute = CssAttribute String

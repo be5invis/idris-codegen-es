@@ -54,6 +54,7 @@ tabbedApps : List Attribute -> AppGroup ts -> Vect (length ts) String ->
 tabbedApps attrs x labels =
   MkApp
     x
+    (getGroupInit x)
     (\y => uniqIdView (\i => mkTabs attrs (renderAppGroup y) labels ("id" ++ show i) ))
     stepAppGroupInput
     stepAppGroupAsync
@@ -92,6 +93,7 @@ tabbedApps attrs x labels =
         ( css ("tabs tab-" ++ id) :: attrs)
         ((concat $ map mkTab $ zip range (zip tabs labels)) ++ div [css "slide"] empty)
 
+
 public export
 data Menu : Nat -> Type where
   Nil : Menu 0
@@ -115,7 +117,7 @@ runAppWithNav {ts} name x m =
     let s0 = case getMenuPos hash m of
                 Nothing => 0
                 Just z => z
-    runApp'(Left <$> onHash) (MkApp (s0,x) render stpInput stpAsync)
+    runApp (MkApp (s0,x) (Left <$> onHash) render stpInput stpAsync)
   where
     onHash : ASync String
     onHash =

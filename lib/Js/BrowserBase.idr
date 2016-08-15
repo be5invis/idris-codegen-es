@@ -120,6 +120,7 @@ data App : (a:Type) -> (a->Type) -> Type -> Type where
           {f: a->Type} ->
           {b: Type} ->
           a ->
+          (ASync b) ->
           ((x:a) -> View (f x)) ->
           ((x:a) -> f x -> (a, ASync b)) ->
           (a -> b -> (a, ASync b)) ->
@@ -127,23 +128,27 @@ data App : (a:Type) -> (a->Type) -> Type -> Type where
 
 public export
 InputType : App a b c -> Type
-InputType {b} (MkApp x _ _ _) = b x
+InputType {b} (MkApp x _ _ _ _) = b x
 
 export
 stepAppASync : (App a f b) -> b -> (App a f b, ASync b)
-stepAppASync (MkApp x1 x2 x3 x4) y =
+stepAppASync (MkApp x1 as x2 x3 x4) y =
   let (ns, async) = x4 x1 y
-  in (MkApp ns x2 x3 x4, async)
+  in (MkApp ns as x2 x3 x4, async)
 
 export
 stepAppInput : (p: App a f b) -> InputType p -> (App a f b, ASync b)
-stepAppInput (MkApp x1 x2 x3 x4) y =
+stepAppInput (MkApp x1 as x2 x3 x4) y =
   let (ns, async) = x3 x1 y
-  in (MkApp ns x2 x3 x4, async)
+  in (MkApp ns as x2 x3 x4, async)
 
 export
 renderApp : (p: App a f b) -> View (InputType p)
-renderApp (MkApp s r _ _) = r s
+renderApp (MkApp s _ r _ _) = r s
+
+export
+getInit : App a f b -> ASync b
+getInit (MkApp _ x _ _ _) = x
 
 --public export
 data AppState : (b:Type) -> (b->Type) -> Type -> Type where
@@ -428,9 +433,10 @@ mutual
   initView ctx c view =
     initViewDom (MkViewContext c 0 id (updateApp ctx)) view
 
+
 export
-runApp' : ASync b -> App a f b -> JS_IO ()
-runApp' {a} {f} {b} async app =
+runApp : App a f b -> JS_IO ()
+runApp {a} {f} {b} app =
   do
     c <- body
     ctxPtr <- jscall "{}" (() -> JS_IO Ptr) ()
@@ -439,11 +445,8 @@ runApp' {a} {f} {b} async app =
     v1 <- initView ctx c v
     let appSt = MkAppState app v1 c
     setAppState ctx $ appSt
-    setASync (updateAppVal ctx) async
+    setASync (updateAppVal ctx) (getInit app)
 
-export
-runApp : App a f b -> JS_IO ()
-runApp = runApp' never
 
 -------- View Instances ----
 export

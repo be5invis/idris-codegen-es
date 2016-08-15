@@ -50,3 +50,11 @@ export
 Monad ASync where
   (>>=) (MkASync stepx) f =
     MkASync $ \onevt => stepx (\x => let MkASync stepf = f x in stepf onevt )
+
+export
+both : ASync a -> ASync a -> ASync a
+both (MkASync s1) (MkASync s2) =
+  MkASync $ \onevt =>
+    do
+      s1 onevt
+      s2 onevt

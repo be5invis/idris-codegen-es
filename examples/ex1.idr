@@ -10,6 +10,7 @@ vw s =
 page : SimpleApp String String
 page = MkSimpleApp
         ""
+        never
         vw
         (\x, y => (y, never))
 

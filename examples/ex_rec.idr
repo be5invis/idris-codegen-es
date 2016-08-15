@@ -54,6 +54,7 @@ vw x = d $ (buildForm (Just $ FormSetVal x) $ addSubmit "Submit" $ tstForm 0)
 page : SimpleApp TstExp TstExp
 page = MkSimpleApp
         (Pos 6)
+        never
         vw
         (\x, y => (y, never))
 
