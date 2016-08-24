@@ -58,3 +58,18 @@ both (MkASync s1) (MkASync s2) =
     do
       s1 onevt
       s2 onevt
+
+export
+data Cursor a = MkCursor (JS_IO ()) ((a -> JS_IO ()) -> JS_IO ())
+
+export
+newCursor : (JS_IO ()) -> ((a -> JS_IO ()) -> JS_IO ()) -> JS_IO ()
+newCursor close each = MkCursor close each
+
+export
+each : (a -> JS_IO ()) -> Cursor a -> JS_IO ()
+each : proc (MkCursor _ e) = e proc
+
+export
+close : Cursor a -> JS_IO ()
+close (MkCursor x _) = x

@@ -39,48 +39,47 @@ export
 table : String -> String -> Table a
 table {a} x y = MkTable x y a
 
-public export
-InsertInfo : SDataTy
-InsertInfo = SObj []
-
 export
 data Query : SDataTy -> Type where
-  Insert : Table a -> List (ISDataObj a) -> Query InsertInfo
+  Values : Table a -> Query (SObj a)
 
 
 mkQuery : Ptr -> Query a -> JS_IO Ptr
-mkQuery p (Insert (MkTable database name ptype) vals) =
-  do
-    v <- encodeJS (SList $ SObj ptype) vals
-    jscall "%2.db(%0).table(%1).insert(%3)" (String -> String -> Ptr -> Ptr -> JS_IO Ptr) database name p v
+mkQuery p (Values (MkTable database name ptype)) =
+  jscall "%0.db(database).table()" (Ptr -> String -> String) p database name
 
 
 export
-runQuery' : Connection -> Query a -> ASync (Either String (ISDataTy a))
-runQuery' {a} (MkConnection r c) q =
+runQuery' : Connection -> Int -> Query a -> ASync (Either String (ISDataTy a))
+runQuery' {a} (MkConnection r c) limit q =
   do
     qq <- liftJS_IO $ mkQuery r q
     decodeRes $ err2Either $ MkASync $ \proc =>
-      jscall "%0.run(%1,function(e,c){%2([e,c])})"
-        (Ptr -> Ptr -> JsFn (Ptr -> JS_IO ()) -> JS_IO () )
+      jscall "%0.limit(%3).run(%1,function(e,c){%2([e,c])})"
+        (Ptr -> Ptr -> JsFn (Ptr -> JS_IO ()) -> Int -> JS_IO () )
         qq
         c
         (MkJsFn proc)
+        limit
   where
-    decodeRes : ASync (Either String Ptr) -> ASync  (Either String (ISDataTy a))
+    decodeRes : ASync (Either String Ptr) -> ASync (Either String (ISDataTy a))
     decodeRes x =
       case !x of
           Left e => pure $ Left e
           Right y => liftJS_IO $ decodeJS a y
 
 export
-runQuery : Connection -> Query a -> ASync (ISDataTy a)
-runQuery conn q =
+runQuery : Connection -> Int -> Query a -> ASync (ISDataTy a)
+runQuery conn lim q =
   do
-    res <- runQuery' conn q
+    res <- runQuery' conn lim q
     case res of
       Right x => pure x
       Left e => error e
+
+export
+getFeed' : Connection -> Query a -> ASync (Either String Cursor (ISDataTy a))
+getFeed' 
 
 export
 createTable : String -> Connection -> String -> ASync ()
@@ -96,9 +95,25 @@ createTable database (MkConnection r c) tableName =
         (MkJsFn proc)
 
 export
-insert : Table a -> List (ISDataObj a) -> Query InsertInfo
-insert = Insert
+insert : Connection -> Table a -> List (ISDataObj a) -> ASync (Either String ())
+insert (MkConnection r c) (MkTable database name ptype) vals =
+  do
+    v <- encodeJS (SList $ SObj ptype) vals
+    map (\_=> ()) $ handleErr $ MkASync $ \proc =>
+    jscall
+      "%2.db(%0).table(%1).insert(%3).run(%4, function(e,c){%5([e,c])} )"
+      (String -> String -> Ptr -> Ptr -> Ptr -> JsFn (Ptr -> JS_IO ()) -> JS_IO Ptr)
+      database
+      name
+      r
+      v
+      c
+      (MkJsFn proc)
 
 export
-insert1 : Table a -> ISDataObj a -> Query InsertInfo
+insert1 : Table a -> ISDataObj a -> ASync (Either)
 insert1 x y = Insert x [y]
+
+export
+values : Table a -> Query a
+values = Values

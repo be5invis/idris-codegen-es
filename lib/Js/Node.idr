@@ -79,6 +79,10 @@ public export
 data HttpHandler = HandleGet String (JS_IO String)
                  | HandlePost String (String -> ASync String)
 
+public export
+data WSHandler = HandleWSFeed String (String -> Cursor String)
+--
+
 handlerSelector : HttpHandler -> String
 handlerSelector (HandleGet s _) = "GET" ++ s
 handlerSelector (HandlePost s _) = "POST" ++ s
@@ -87,11 +91,20 @@ total
 public export
 ImplementationTy : Type -> ServiceTy -> Type
 ImplementationTy t (RPCServiceTy a b) = (t -> a -> ASync b)
-ImplementationTy t (FeedServiceTy a b) = (t -> a -> ASync b)
+ImplementationTy t (FeedServiceTy a b) = (t -> a -> Cursor b)
 
-makeRawServ : t -> Service name st -> ImplementationTy t st -> HttpHandler
+makeRawServ : t -> Service name st -> ImplementationTy t st -> Either HttpHandler WSHandler
 makeRawServ context (RPCService name e1 e2) f =
-  HandlePost name $ \x =>
+  Left $ HandlePost name $ \x =>
+        case decode e1 x of
+          --Left z => do
+          --  liftJS_IO $ putStr' x
+          --  liftJS_IO $ putStr' z
+          --  pure $ Left 400
+          Right z =>
+            encode e2 <$> f context z
+makeRawServ context (FeedService name e1 e2) f =
+  Right $ HandleWSFeed name $ \x =>
         case decode e1 x of
           --Left z => do
           --  liftJS_IO $ putStr' x
@@ -100,15 +113,21 @@ makeRawServ context (RPCService name e1 e2) f =
           Right z =>
             encode e2 <$> f context z
 
-total
+addRawServ : t -> Service name st -> ImplementationTy t st ->
+              (List HttpHandler, List WSHandler)total -> (List HttpHandler, List WSHandler)
+addRawServ x y z (w, k) =
+  case makeRawServ x y z of
+    Left u => (u::w, k)
+    Right u => (w, u::k)
+
 public export
 MakeServicesTy : Type -> List (String, ServiceTy) -> Type
-MakeServicesTy t [] = List HttpHandler
+MakeServicesTy t [] = (List HttpHandler, List WSHandler)
 MakeServicesTy t ((_,st)::xs) = ImplementationTy t st -> MakeServicesTy t xs
 
-makeServices' : t -> ServiceGroup ts -> List HttpHandler -> MakeServicesTy t ts
+makeServices' : t -> ServiceGroup ts -> (List HttpHandler, List WSHandler) -> MakeServicesTy t ts
 makeServices' _ [] acc = acc
-makeServices' ctx (x::xs) acc = \next => makeServices' ctx xs (makeRawServ ctx x next :: acc )
+makeServices' ctx (x::xs) acc = \next => makeServices' ctx xs (addRawServ ctx x next acc )
 
 export
 makeServices : ServiceGroup ts -> t -> MakeServicesTy t ts
@@ -149,16 +168,31 @@ procReqRaw handlers r@(MkRequest p) = do
           p
           (MkJsFn $ procInput r x)
 
+setupWS : Ptr -> Ptr -> List WSHandler -> JS_IO ()
+setupWS url wss wsservices =
+  do
+    jscall
+      "%0.on('connection', function connection(ws){" ++
+      " console.log(%1.parse(ws.upgradeReq.url, true));" ++
+      "})"
+      (Ptr -> Ptr -> JS_IO ())
+      wss
+      url
+
 export
-runServer : Int -> List HttpHandler -> ASync ()
-runServer port services =
+runServer : Int -> List HttpHandler -> List WSHandler -> ASync ()
+runServer port services wsservices =
   do
     http <- liftJS_IO $ require "http"
+    url <- liftJS_IO $ require "url"
+    webSocketServer <- jscall "require('ws').Server" (() -> JS_IO Ptr) ()
     server <- liftJS_IO $ jscall
                   "%0.createServer(function(req, res){return %1([req,res])})"
                   (Ptr -> (JsFn (Ptr -> JS_IO ())) -> JS_IO Ptr )
                   http
                   (MkJsFn $ \x => procReqRaw servMap (MkRequest x))
+    wss <- liftJS_IO $ jscall "new %0({server: %1})" (Ptr -> Ptr -> JS_IO Ptr) webSocketServer server
+    liftJS_IO $ setupWS url wss wsservices
     MkASync $ \proc => jscall
       "%1.listen(%0, %2)"
       (Int -> Ptr -> JsFn (() -> JS_IO ()) -> JS_IO ())

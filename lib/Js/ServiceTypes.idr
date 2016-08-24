@@ -14,6 +14,7 @@ data EncoderDecoder a = MkEncoderDecoder (a -> String) (String -> Either String 
 public export
 data Service : String -> ServiceTy -> Type where
   RPCService : (s:String) -> EncoderDecoder a -> EncoderDecoder b -> Service s (RPCServiceTy a b)
+  FeedService : (s:String) -> EncoderDecoder a -> EncoderDecoder b -> Service s (FeedServiceTy a b)
 
 public export
 data ServiceGroup : List (String, ServiceTy) -> Type where
