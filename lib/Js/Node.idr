@@ -114,7 +114,7 @@ makeRawServ context (FeedService name e1 e2) f =
             encode e2 <$> f context z
 
 addRawServ : t -> Service name st -> ImplementationTy t st ->
-              (List HttpHandler, List WSHandler)total -> (List HttpHandler, List WSHandler)
+              (List HttpHandler, List WSHandler) -> (List HttpHandler, List WSHandler)
 addRawServ x y z (w, k) =
   case makeRawServ x y z of
     Left u => (u::w, k)
@@ -131,7 +131,7 @@ makeServices' ctx (x::xs) acc = \next => makeServices' ctx xs (addRawServ ctx x 
 
 export
 makeServices : ServiceGroup ts -> t -> MakeServicesTy t ts
-makeServices x ctx = makeServices' ctx x []
+makeServices x ctx = makeServices' ctx x ([],[])
 
 procInput : Request -> (String -> ASync String) -> String -> JS_IO ()
 procInput (MkRequest p) f body =
@@ -172,9 +172,9 @@ setupWS : Ptr -> Ptr -> List WSHandler -> JS_IO ()
 setupWS url wss wsservices =
   do
     jscall
-      "%0.on('connection', function connection(ws){" ++
+      ("%0.on('connection', function connection(ws){" ++
       " console.log(%1.parse(ws.upgradeReq.url, true));" ++
-      "})"
+      "})")
       (Ptr -> Ptr -> JS_IO ())
       wss
       url
@@ -185,7 +185,7 @@ runServer port services wsservices =
   do
     http <- liftJS_IO $ require "http"
     url <- liftJS_IO $ require "url"
-    webSocketServer <- jscall "require('ws').Server" (() -> JS_IO Ptr) ()
+    webSocketServer <- liftJS_IO $ jscall "require('ws').Server" (() -> JS_IO Ptr) ()
     server <- liftJS_IO $ jscall
                   "%0.createServer(function(req, res){return %1([req,res])})"
                   (Ptr -> (JsFn (Ptr -> JS_IO ())) -> JS_IO Ptr )

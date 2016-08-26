@@ -46,21 +46,12 @@ data Query : SDataTy -> Type where
 
 mkQuery : Ptr -> Query a -> JS_IO Ptr
 mkQuery p (Values (MkTable database name ptype)) =
-  jscall "%0.db(database).table()" (Ptr -> String -> String) p database name
+  jscall "%0.db(database).table()" (Ptr -> String -> String -> JS_IO Ptr) p database name
 
 
-export
-runQuery' : Connection -> Int -> Query a -> ASync (Either String (ISDataTy a))
-runQuery' {a} (MkConnection r c) limit q =
-  do
-    qq <- liftJS_IO $ mkQuery r q
-    decodeRes $ err2Either $ MkASync $ \proc =>
-      jscall "%0.limit(%3).run(%1,function(e,c){%2([e,c])})"
-        (Ptr -> Ptr -> JsFn (Ptr -> JS_IO ()) -> Int -> JS_IO () )
-        qq
-        c
-        (MkJsFn proc)
-        limit
+procRethinkRes : (a:SDataTy) -> ASync Ptr -> ASync (Either String (ISDataTy a))
+procRethinkRes a y =
+  decodeRes $ err2Either y
   where
     decodeRes : ASync (Either String Ptr) -> ASync (Either String (ISDataTy a))
     decodeRes x =
@@ -68,23 +59,37 @@ runQuery' {a} (MkConnection r c) limit q =
           Left e => pure $ Left e
           Right y => liftJS_IO $ decodeJS a y
 
+toErrAsync : ASync (Either String x) -> ASync x
+toErrAsync x =
+  x >>= xtoErr
+  where
+    xtoErr (Left z) = error z
+    xtoErr (Right z) = pure z
+
+export
+runQuery' : Connection -> Int -> Query a -> ASync (Either String (ISDataTy a))
+runQuery' {a} (MkConnection r c) limit q =
+  do
+    qq <- liftJS_IO $ mkQuery r q
+    procRethinkRes a $ MkASync $ \proc =>
+      jscall "%0.limit(%3).run(%1,function(e,c){%2([e,c])})"
+        (Ptr -> Ptr -> JsFn (Ptr -> JS_IO ()) -> Int -> JS_IO () )
+        qq
+        c
+        (MkJsFn proc)
+        limit
+
 export
 runQuery : Connection -> Int -> Query a -> ASync (ISDataTy a)
-runQuery conn lim q =
-  do
-    res <- runQuery' conn lim q
-    case res of
-      Right x => pure x
-      Left e => error e
+runQuery conn lim q = toErrAsync $ runQuery' conn lim q
+
+--export
+--getFeed' : Connection -> Query a -> ASync (Either String Cursor (ISDataTy a))
 
 export
-getFeed' : Connection -> Query a -> ASync (Either String Cursor (ISDataTy a))
-getFeed' 
-
-export
-createTable : String -> Connection -> String -> ASync ()
+createTable : String -> Connection -> String -> ASync (Either String (HVect []))
 createTable database (MkConnection r c) tableName =
-    map (\_ => ()) $ handleErr $ MkASync $ \proc =>
+    procRethinkRes (SObj []) $ MkASync $ \proc =>
       jscall
         "%0.db(%1).tableCreate(%2).run(%3, function(e,c){%4([e,c])}  ) "
         (Ptr -> String -> String -> Ptr -> JsFn (Ptr -> JS_IO ()) -> JS_IO () )
@@ -95,25 +100,25 @@ createTable database (MkConnection r c) tableName =
         (MkJsFn proc)
 
 export
-insert : Connection -> Table a -> List (ISDataObj a) -> ASync (Either String ())
+insert : Connection -> Table a -> List (ISDataObj a) -> ASync (Either String (HVect []))
 insert (MkConnection r c) (MkTable database name ptype) vals =
   do
-    v <- encodeJS (SList $ SObj ptype) vals
-    map (\_=> ()) $ handleErr $ MkASync $ \proc =>
-    jscall
-      "%2.db(%0).table(%1).insert(%3).run(%4, function(e,c){%5([e,c])} )"
-      (String -> String -> Ptr -> Ptr -> Ptr -> JsFn (Ptr -> JS_IO ()) -> JS_IO Ptr)
-      database
-      name
-      r
-      v
-      c
-      (MkJsFn proc)
+    v <- liftJS_IO $ encodeJS (SList $ SObj ptype) vals
+    procRethinkRes (SObj []) $ MkASync $ \proc =>
+      jscall
+        "%2.db(%0).table(%1).insert(%3).run(%4, function(e,c){%5([e,c])} )"
+        (String -> String -> Ptr -> Ptr -> Ptr -> JsFn (Ptr -> JS_IO ()) -> JS_IO ())
+        database
+        name
+        r
+        v
+        c
+        (MkJsFn proc)
+
+--export
+--insert1 : Table a -> ISDataObj a -> ASync (Either)
+--insert1 x y = Insert x [y]
 
 export
-insert1 : Table a -> ISDataObj a -> ASync (Either)
-insert1 x y = Insert x [y]
-
-export
-values : Table a -> Query a
+values : Table a -> Query (SObj a)
 values = Values

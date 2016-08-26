@@ -6,6 +6,31 @@ jscall : (fname : String) -> (ty : Type) ->
           {auto fty : FTy FFI_JS [] ty} -> ty
 jscall fname ty = foreign FFI_JS fname ty
 
+export
+random : JS_IO Double
+random = jscall "Math.random()" (() -> JS_IO Double) ()
+
+export
+randomInteger : Integer -> JS_IO Integer
+randomInteger x = pure $ cast $ !random * (cast x)
+
+export
+randomNat : Nat -> JS_IO Nat
+randomNat x = cast <$> randomInteger (cast x)
+
+export
+shuffle : List a -> JS_IO (List a)
+shuffle x =
+  shuffle' x [] (length x)
+  where
+    shuffle' : List a -> List a -> Nat -> JS_IO (List a)
+    shuffle' x r (S i) =
+      do
+        j <- randomNat (S i)
+        let (p, y::s) = splitAt j x
+        shuffle' (p++s) (y::r) (i)
+    shuffle' _ r Z = pure r
+
 public export
 data ASync : Type -> Type where
   MkASync : ((a -> JS_IO()) -> JS_IO ()) -> ASync a
@@ -62,13 +87,19 @@ both (MkASync s1) (MkASync s2) =
 export
 data Cursor a = MkCursor (JS_IO ()) ((a -> JS_IO ()) -> JS_IO ())
 
+
 export
-newCursor : (JS_IO ()) -> ((a -> JS_IO ()) -> JS_IO ()) -> JS_IO ()
-newCursor close each = MkCursor close each
+Functor Cursor where
+  map f (MkCursor c oe) = MkCursor c (\onevt => oe (\x => onevt (f x)) )
+
+
+export
+newCursor : (JS_IO ()) -> ((a -> JS_IO ()) -> JS_IO ()) -> Cursor a
+newCursor c e = MkCursor c e
 
 export
 each : (a -> JS_IO ()) -> Cursor a -> JS_IO ()
-each : proc (MkCursor _ e) = e proc
+each proc (MkCursor _ e) = e proc
 
 export
 close : Cursor a -> JS_IO ()
