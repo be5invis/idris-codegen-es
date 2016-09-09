@@ -189,10 +189,10 @@ evalJSIO x =
 
 cgForeignRes :: (JsAST -> JsAST) -> FDesc -> JsAST -> JsAST
 cgForeignRes ret (FApp (UN "JS_IntT") _) x = ret x
---cgForeignRes ret (FCon (UN "JsInt")) x = ret x
 cgForeignRes ret (FCon (UN "JS_Unit")) x = ret x
 cgForeignRes ret (FCon (UN "JS_Str")) x = ret x
 cgForeignRes ret (FCon (UN "JS_Ptr")) x = ret x
+cgForeignRes ret (FCon (UN "JS_Float")) x = ret x
 cgForeignRes ret desc val =  error $ "Foreign return type " ++ show desc ++ " not supported yet."
 
 cgVar :: LVar -> JsAST
@@ -231,6 +231,7 @@ cgOp LStrTail [x] = JsMethod x "slice" [JsInt 1]
 cgOp LStrLt [l, r] = JsB2I $ JsBinOp "<" l r
 cgOp (LFloatStr) [x] = JsBinOp "+" x (JsStr "")
 cgOp (LIntStr _) [x] = JsBinOp "+" x (JsStr "")
+cgOp (LFloatInt _) [x] = JsApp "Math.trunc" [x]
 cgOp (LStrInt _) [x] = JsBinOp "||" (JsApp "parseInt" [x]) (JsInt 0)
 cgOp (LStrFloat) [x] = JsBinOp "||" (JsApp "parseFloat" [x]) (JsInt 0)
 cgOp (LChInt _) [x] = x

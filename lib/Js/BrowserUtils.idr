@@ -74,14 +74,32 @@ getGroupInit : AppGroup ts -> ASync (AppGroupAsyncType ts)
 getGroupInit [] = never
 getGroupInit (x::xs) = (MkAlt Here <$> getInit x) `both` (AltExpand <$> getGroupInit xs)
 
+
+public export
+data Length = Px Nat
+
 export
 data Attribute = CssAttribute String
-               | WidthAttribute String
                | HRefAttribute String
                | HiddenAttribute Bool
+               | WidthAttribute Length
+               | HeightAttribute Length
+               | IdAttribute String
 
 export
 data Event a = EventClick a
+
+export
+pxWidth : Nat -> Attribute
+pxWidth x = WidthAttribute $ Px x
+
+export
+pxHeight : Nat -> Attribute
+pxHeight x = HeightAttribute $ Px x
+
+export
+id : String -> Attribute
+id x = IdAttribute x
 
 export
 click : a -> Event a
@@ -103,23 +121,34 @@ export
 hidden' : Bool -> Attribute
 hidden' = HiddenAttribute
 
-export
-width : String -> Attribute
-width = WidthAttribute
-
 getClass : List Attribute -> List String
 getClass (CssAttribute x :: xs) = words x ++ getClass xs
 getClass (_::xs) = getClass xs
 getClass [] = []
 
 makeClass : List Attribute -> Maybe String
-makeClass [] = Nothing
-makeClass x = Just $ unwords $ nub $ getClass x
+makeClass x =
+  case getClass x of
+    [] => Nothing
+    z => Just $ unwords $ nub z
+
+Show Length where
+  show (Px n) = show n ++ "px"
 
 makeWidth : List Attribute -> Maybe String
 makeWidth [] = Nothing
-makeWidth (WidthAttribute x :: _) = Just x
+makeWidth (WidthAttribute x :: _) = Just $ show x
 makeWidth (_::xs) = makeWidth xs
+
+makeId : List Attribute -> Maybe String
+makeId [] = Nothing
+makeId (IdAttribute x :: _) = Just $ x
+makeId (_::xs) = makeId xs
+
+makeHeight : List Attribute -> Maybe String
+makeHeight [] = Nothing
+makeHeight (HeightAttribute x :: _) = Just $ show x
+makeHeight (_::xs) = makeHeight xs
 
 makeHRef : List Attribute -> Maybe String
 makeHRef [] = Nothing
@@ -142,6 +171,8 @@ makeEvents xs =
 makeAttributes : List Attribute -> List (String, String)
 makeAttributes attrs =
   mkAttr "class" makeClass
+  ++ mkAttr "id" makeId
+  ++ mkAttr "height" makeHeight
   ++ mkAttr "width" makeWidth
   ++ mkAttr "href" makeHRef
   ++ mkAttr "hidden" makeHidden
@@ -246,6 +277,13 @@ export
 fileSelector : View (Maybe DomFile)
 fileSelector = fileSelectorNode
 
+export
+iimg : List (Event a) -> List Attribute -> String -> View a
+iimg evts attrs x = containerNode "img" (makeEvents evts) (("src", x) :: makeAttributes attrs) $ empty
+
+export
+img : List Attribute -> String -> View a
+img x y = iimg [] x y
 
 export
 viewBind : Typeable a => View a -> (a -> View b) -> View b

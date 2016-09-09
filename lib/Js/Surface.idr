@@ -3,7 +3,9 @@ module Js.Surface
 import Js.Browser
 import Data.Vect
 
-import Debug.Trace
+export
+gsize : Fin 13 -> Attribute
+gsize n = css $ "g--" ++ (show $ finToInteger n)
 
 public export
 data BtnColor = BtnRed | BtnYellow | BtnGreen | BtnBlue | BtnPrimary | BtnSecondary | BtnAccent
