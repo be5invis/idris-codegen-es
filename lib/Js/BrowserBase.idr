@@ -114,48 +114,66 @@ vLength (ContainerNode _ _ _ _) = 1
 vLength (FoldNode _ v _ _ _) = vLength v
 vLength (UniqIdNode _ (Just (_, v))) = vLength v
 
+export
+data AppM b a = MkAppM ( (ASync b -> JS_IO ()) -> JS_IO a )
+
+export
+Functor (AppM b) where
+  map f (MkAppM x) = MkAppM $ \proc => f <$> (x proc)
+
+export
+Applicative (AppM b) where
+  pure a = MkAppM $ \proc => pure a
+
+  (<*>) (MkAppM x) (MkAppM y) = MkAppM $ \proc => (x proc) <*> (y proc)
+
+export
+Monad (AppM b) where
+  (>>=) (MkAppM x) f =
+    MkAppM $
+      \proc => do
+        (MkAppM y) <- f <$> (x proc)
+        y proc
+
+runAppM : (ASync b -> JS_IO ()) -> AppM b a -> JS_IO a
+runAppM x (MkAppM y) = y x
+
 public export
 data App : (a:Type) -> (a->Type) -> Type -> Type where
   MkApp : {a:Type} ->
           {f: a->Type} ->
           {b: Type} ->
-          a ->
-          (ASync b) ->
+          AppM b a ->
           ((x:a) -> View (f x)) ->
-          ((x:a) -> f x -> (a, ASync b)) ->
-          (a -> b -> (a, ASync b)) ->
+          ((x:a) -> f x -> AppM b a) ->
+          (a -> b -> AppM b a) ->
           App a f b
 
-public export
-InputType : App a b c -> Type
-InputType {b} (MkApp x _ _ _ _) = b x
-
-export
-stepAppASync : (App a f b) -> b -> (App a f b, ASync b)
-stepAppASync (MkApp x1 as x2 x3 x4) y =
-  let (ns, async) = x4 x1 y
-  in (MkApp ns as x2 x3 x4, async)
-
-export
-stepAppInput : (p: App a f b) -> InputType p -> (App a f b, ASync b)
-stepAppInput (MkApp x1 as x2 x3 x4) y =
-  let (ns, async) = x3 x1 y
-  in (MkApp ns as x2 x3 x4, async)
-
-export
-renderApp : (p: App a f b) -> View (InputType p)
-renderApp (MkApp s _ r _ _) = r s
-
-export
-getInit : App a f b -> ASync b
-getInit (MkApp _ x _ _ _) = x
-
---public export
-data AppState : (b:Type) -> (b->Type) -> Type -> Type where
-  MkAppState : (p: App b f a) ->
-               (View (InputType p)) ->
+data AppState : (a:Type) -> (a->Type) -> Type -> Type where
+  MkAppState : (x: a) ->
+               (View (f x)) ->
                DomNode ->
-               AppState b f a
+               AppState a f b
+{-public export
+InputType : App a b c -> Type
+InputType {b} (MkApp x _ _ _) = b x
+-}
+
+export
+stepAppASync : App a f b -> a -> b -> AppM b a
+stepAppASync (MkApp x1 x2 x3 x4) x y = x4 x y
+
+export
+stepAppInput : App a f b -> (x: a) -> f x -> AppM b a
+stepAppInput (MkApp x1 x2 x3 x4) x y = x3 x y
+
+export
+renderApp : App a f b -> (x: a) -> View (f x)
+renderApp (MkApp _ r _ _) x = r x
+
+export
+getInit : App a f b -> AppM b a
+getInit (MkApp x _ _ _) = x
 
 data Ctx : (b:Type) -> (b->Type) -> Type -> Type where
   MkCtx : Ptr -> Ctx a b c
@@ -402,36 +420,37 @@ mutual
       putStr' $ "Internal error processing events on path" ++ show p
       pure (v, Nothing)
 
+  runAndSetAppM : App a f b -> Ctx a f b -> AppM b a -> JS_IO a
+  runAndSetAppM app ctx x = runAppM (setASync (updateAppVal app ctx) ) x
 
-  updateAppVal : Ctx a b c -> c -> JS_IO ()
-  updateAppVal ctx z =
-    do
-      (MkAppState app lastV cont) <- getAppState ctx
-      let (newApp, async) = stepAppASync app z
-      let vNew = renderApp newApp
-      finalView <- updateNodeView (MkViewContext cont 0 id (updateApp ctx)) lastV vNew
-      setAppState ctx (MkAppState newApp finalView cont)
-      setASync (updateAppVal ctx) async
 
-  updateApp : Ctx a b c -> ViewEvent -> JS_IO ()
-  updateApp ctx e =
+  updateAppVal : App a f b -> Ctx a f b -> b -> JS_IO ()
+  updateAppVal app ctx z =
     do
-      (MkAppState app lastV cont) <- getAppState ctx
-      (n2, mVal) <- updateNodeEvent (MkViewContext cont 0 id (updateApp ctx)) e lastV
+      (MkAppState st lastV cont) <- getAppState ctx
+      newSt <- runAndSetAppM app ctx $ stepAppASync app st z
+      let vNew = renderApp app newSt
+      finalView <- updateNodeView (MkViewContext cont 0 id (updateApp app ctx)) lastV vNew
+      setAppState ctx (MkAppState newSt finalView cont)
+
+  updateApp : App a f b -> Ctx a f b -> ViewEvent -> JS_IO ()
+  updateApp app ctx e =
+    do
+      (MkAppState st lastV cont) <- getAppState ctx
+      (n2, mVal) <- updateNodeEvent (MkViewContext cont 0 id (updateApp app ctx)) e lastV
       case mVal of
-        Nothing => setAppState ctx (MkAppState app n2 cont)
+        Nothing => setAppState ctx (MkAppState st n2 cont)
         Just z =>
           do
-            let (newApp, async) = stepAppInput app z
-            let vNew = renderApp newApp
-            finalView <- updateNodeView (MkViewContext cont 0 id (updateApp ctx)) n2 vNew
-            setAppState ctx (MkAppState newApp finalView cont)
-            setASync (updateAppVal ctx) async
+            newSt <- runAndSetAppM app ctx $ stepAppInput app st z
+            let vNew = renderApp app newSt
+            finalView <- updateNodeView (MkViewContext cont 0 id (updateApp app ctx)) n2 vNew
+            setAppState ctx (MkAppState newSt finalView cont)
 
 
-  initView : Ctx a b c -> DomNode -> View d -> JS_IO (View d)
-  initView ctx c view =
-    initViewDom (MkViewContext c 0 id (updateApp ctx)) view
+  initView : App a f b -> Ctx a f b -> DomNode -> View d -> JS_IO (View d)
+  initView app ctx c view =
+    initViewDom (MkViewContext c 0 id (updateApp app ctx)) view
 
 
 export
@@ -441,11 +460,11 @@ runApp {a} {f} {b} app =
     c <- body
     ctxPtr <- jscall "{}" (() -> JS_IO Ptr) ()
     let ctx = the (Ctx a f b) $ MkCtx ctxPtr
-    let v = renderApp app
-    v1 <- initView ctx c v
-    let appSt = MkAppState app v1 c
+    st <- runAndSetAppM app ctx $ getInit app
+    let v = renderApp app st
+    v1 <- initView app ctx c v
+    let appSt = MkAppState st v1 c
     setAppState ctx $ appSt
-    setASync (updateAppVal ctx) (getInit app)
 
 
 -------- View Instances ----

@@ -15,11 +15,10 @@ SimpleApp : Type -> Type -> Type
 SimpleApp a b = App a (\_=>b) b
 
 export
-MkSimpleApp : a -> ASync b -> (a->View b) -> (a -> b -> (a,ASync b)) -> SimpleApp a b
-MkSimpleApp z s v u =
+mkSimpleApp : AppM b a -> (a->View b) -> (a -> b -> AppM b a) -> SimpleApp a b
+mkSimpleApp z v u =
   MkApp
     z
-    s
     v
     u
     u
@@ -31,24 +30,41 @@ data AppGroup : Vect k ((a:Type ** a->Type), Type) -> Type where
   (::) : App a f b -> AppGroup ts -> AppGroup (((a**f), b)::ts)
 
 public export
-AppGroupInputTypes : AppGroup ts -> Vect (length ts) Type
-AppGroupInputTypes [] = []
-AppGroupInputTypes (x::xs) = InputType x :: AppGroupInputTypes xs
+AppGroupStateTypes : Vect k ((a:Type ** a->Type), Type) -> Vect k Type
+AppGroupStateTypes [] = []
+AppGroupStateTypes (((x ** _), _)::r) = x :: AppGroupStateTypes r
 
 public export
-AppGroupInputType : AppGroup ts -> Type
-AppGroupInputType x =
-  Alt (AppGroupInputTypes x)
+AppGroupStateType : Vect k ((a:Type ** a->Type), Type) -> Type
+AppGroupStateType ts = HVect $ AppGroupStateTypes ts
 
+{-
+public export
+InputType : App a f b -> a -> Type
+InputType {f} app x = f x
+-}
+
+public export
+AppGroupInputTypes : (ts : Vect k ((a:Type ** a->Type), Type)) -> AppGroupStateType ts -> Vect (length ts) Type
+AppGroupInputTypes [] [] = []
+AppGroupInputTypes (((x**f),_)::xs) (y::ys) = f y :: AppGroupInputTypes xs ys
+
+public export
+AppGroupInputType : (ts : Vect k ((a:Type ** a->Type), Type)) -> AppGroupStateType ts -> Type
+AppGroupInputType ts y =
+  Alt (AppGroupInputTypes ts y)
+
+{-
 public export
 AppGroupAsyncType : Vect k ((a:Type ** a->Type), Type) -> Type
 AppGroupAsyncType ts = Alt (map snd ts)
+-}
 
 export
-renderAppGroup : (g: AppGroup ts) -> Vect (length ts) (View (AppGroupInputType g))
-renderAppGroup [] = []
-renderAppGroup (x::xs) = (MkAlt Here <$> renderApp x) :: map (AltExpand<$>) (renderAppGroup xs)
-
+renderAppGroup : AppGroup ts -> (st : AppGroupStateType ts) -> Vect (length ts) (View (AppGroupInputType ts st))
+renderAppGroup [] [] = []
+--renderAppGroup (x::xs) = (MkAlt Here <$> renderApp x) :: map (AltExpand<$>) (renderAppGroup xs)
+{-
 export
 stepAppGroupInput : (g: AppGroup ts) -> AppGroupInputType g -> (AppGroup ts, ASync (AppGroupAsyncType ts))
 stepAppGroupInput [] y = ([], never)
@@ -73,7 +89,7 @@ export
 getGroupInit : AppGroup ts -> ASync (AppGroupAsyncType ts)
 getGroupInit [] = never
 getGroupInit (x::xs) = (MkAlt Here <$> getInit x) `both` (AltExpand <$> getGroupInit xs)
-
+-}
 
 public export
 data Length = Px Nat

@@ -6,9 +6,9 @@ start = []
 data TodoAction = TodoAdd String
                 | TodoRemove Nat
 
-upd : List String -> TodoAction -> (List String, ASync TodoAction)
-upd y (TodoAdd x) = (y ++ [x], never)
-upd y (TodoRemove i) =  (take i y  ++ drop (i+1) y, never)
+upd : List String -> TodoAction -> AppM TodoAction (List String)
+upd y (TodoAdd x) = pure $ y ++ [x]
+upd y (TodoRemove i) =  pure $ take i y  ++ drop (i+1) y
 
 vw_todos : List (Nat, String) -> View TodoAction
 vw_todos l = concat $ map (\(i,s)=> d $ button "x" (TodoRemove i) ++ t s) l
@@ -22,9 +22,8 @@ vw l =
 
 
 page : SimpleApp (List String) TodoAction
-page = MkSimpleApp
-        start
-        never
+page = mkSimpleApp
+        (pure start)
         vw
         upd
 

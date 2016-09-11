@@ -52,11 +52,10 @@ vw x = d $ (buildForm (Just $ FormSetVal x) $ addSubmit "Submit" $ tstForm 0)
 
 
 page : SimpleApp TstExp TstExp
-page = MkSimpleApp
-        (Pos 6)
-        never
+page = mkSimpleApp
+        (pure $ Pos 6)
         vw
-        (\x, y => (y, never))
+        (\x, y => pure y)
 
 main : JS_IO ()
 main = do

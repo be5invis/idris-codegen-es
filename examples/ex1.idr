@@ -8,11 +8,10 @@ vw s =
   (d $ buildForm (Just $ FormSetVal s) (addSubmit "Submit" $ textForm)) ++ t s
 
 page : SimpleApp String String
-page = MkSimpleApp
-        ""
-        never
+page = mkSimpleApp
+        (pure "")
         vw
-        (\x, y => (y, never))
+        (\x, y => pure y)
 
 main : JS_IO ()
 main = do

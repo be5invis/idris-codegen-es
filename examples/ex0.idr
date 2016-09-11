@@ -2,17 +2,16 @@ module Main
 
 import Js.Browser
 
-upd : String -> String -> (String, ASync String)
-upd x y = (y, never)
+upd : String -> String -> AppM String String
+upd x y = pure y
 
 vw : String -> View String
 vw s = textinput' ++ t s
 
 
 page : SimpleApp String String
-page = MkSimpleApp
-          ""
-          never
+page = mkSimpleApp
+          (pure "")
           vw
           upd
 
