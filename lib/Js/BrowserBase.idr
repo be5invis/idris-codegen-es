@@ -135,6 +135,15 @@ Monad (AppM b) where
         (MkAppM y) <- f <$> (x proc)
         y proc
 
+export
+createEvent : ASync b -> AppM b ()
+createEvent x = MkAppM $ \proc => proc x
+
+export
+liftJS_IO : JS_IO a -> AppM b a
+liftJS_IO x = MkAppM (\onevt => x)
+
+
 runAppM : (ASync b -> JS_IO ()) -> AppM b a -> JS_IO a
 runAppM x (MkAppM y) = y x
 
