@@ -13,6 +13,7 @@ data TypeRep : Type -> Type where
   TRCons2 : String -> List String -> (a: Type) -> (b: Type) -> (f: Type->Type->Type) ->
                 TypeRep a -> TypeRep b -> TypeRep (f a b)
   TRCons_Nat : String -> List String -> (f: Nat -> Type) -> (n: Nat) -> TypeRep (f n)
+  TRFun : TypeRep a -> TypeRep b -> TypeRep (a -> b)
 
 same : TypeRep a -> TypeRep b -> Bool
 same TRString TRString = True
@@ -22,6 +23,7 @@ same (TRCons x1 y1 _) (TRCons x2 y2 _) = x1 == x2 && y1 == y2
 same (TRCons1 x1 y1 _ _ z1) (TRCons1 x2 y2 _ _ z2) = x1 == x2 && y1 == y2 && same z1 z2
 same (TRCons2 x1 y1 _ _ _ z1 w1) (TRCons2 x2 y2 _ _ _ z2 w2) = x1 == x2 && y1 == y2 && same z1 z2 && same w1 w2
 same (TRCons_Nat x1 y1 _ z1) (TRCons_Nat x2 y2 _ z2) = x1 == x2 && y1 == y2 && z1 == z2
+same (TRFun x1 y1) (TRFun x2 y2) = same x1 x2 && same y1 y2
 same _ _ = False
 
 export
@@ -105,6 +107,10 @@ Typeable String where
 export
 Typeable Integer where
   getTypeRep = TRInteger
+
+export
+(Typeable a, Typeable b) => Typeable (a->b) where
+  getTypeRep = TRFun getTypeRep getTypeRep
 
 export
 Typeable Bool where
