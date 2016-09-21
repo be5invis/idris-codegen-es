@@ -44,8 +44,8 @@ setASync onEvent (MkASync set) =
 
 export
 total
-fireAfter : Int -> a -> ASync a
-fireAfter millis x =
+setTimeout : Int -> a -> ASync a
+setTimeout millis x =
   MkASync $ \onevt => assert_total $
     jscall  "setTimeout(%0, %1)" ( JsFn (() -> JS_IO ()) -> Int -> JS_IO ()) (MkJsFn $ \() => onevt x) millis
 
@@ -67,7 +67,7 @@ Functor ASync where
 
 export
 Applicative ASync where
-  pure x = fireAfter 0 x
+  pure x = setTimeout 0 x
   (MkASync stepf) <*> (MkASync stepx) =
     MkASync (\onevt => stepf (\f => stepx (\x => onevt (f x)) ))
 
