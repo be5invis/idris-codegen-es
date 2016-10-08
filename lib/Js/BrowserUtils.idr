@@ -3,6 +3,8 @@ module Js.BrowserUtils
 import Js.BrowserBase
 import Js.ASync
 import Js.SimpleData
+import Data.SortedMap
+import Data.SortedSet
 
 infixl 4 <$$>
 
@@ -101,6 +103,7 @@ data Attribute = CssAttribute String
                | WidthAttribute Length
                | HeightAttribute Length
                | IdAttribute String
+               | DataAttribute String String
 
 export
 data Event a = EventClick a
@@ -126,6 +129,10 @@ css : String -> Attribute
 css = CssAttribute
 
 export
+dataAttr : String -> String -> Attribute
+dataAttr = DataAttribute
+
+export
 href : String -> Attribute
 href = HRefAttribute
 
@@ -137,45 +144,9 @@ export
 hidden' : Bool -> Attribute
 hidden' = HiddenAttribute
 
-getClass : List Attribute -> List String
-getClass (CssAttribute x :: xs) = words x ++ getClass xs
-getClass (_::xs) = getClass xs
-getClass [] = []
-
-makeClass : List Attribute -> Maybe String
-makeClass x =
-  case getClass x of
-    [] => Nothing
-    z => Just $ unwords $ nub z
-
 Show Length where
   show (Px n) = show n ++ "px"
 
-makeWidth : List Attribute -> Maybe String
-makeWidth [] = Nothing
-makeWidth (WidthAttribute x :: _) = Just $ show x
-makeWidth (_::xs) = makeWidth xs
-
-makeId : List Attribute -> Maybe String
-makeId [] = Nothing
-makeId (IdAttribute x :: _) = Just $ x
-makeId (_::xs) = makeId xs
-
-makeHeight : List Attribute -> Maybe String
-makeHeight [] = Nothing
-makeHeight (HeightAttribute x :: _) = Just $ show x
-makeHeight (_::xs) = makeHeight xs
-
-makeHRef : List Attribute -> Maybe String
-makeHRef [] = Nothing
-makeHRef (HRefAttribute x :: _) = Just x
-makeHRef (_::xs) = makeHRef xs
-
-makeHidden : List Attribute -> Maybe String
-makeHidden [] = Nothing
-makeHidden (HiddenAttribute True :: _) = Just "true"
-makeHidden (HiddenAttribute False :: _) = Nothing
-makeHidden (_::xs) = makeHidden xs
 
 makeEvents : List (Event a) -> List (String, a)
 makeEvents xs =
@@ -184,19 +155,19 @@ makeEvents xs =
     mkE : Event a -> (String, a)
     mkE (EventClick x) = ("click", x)
 
+makeAttribute : Attribute -> SortedMap String String -> SortedMap String String
+makeAttribute (CssAttribute x) y = insert "class" ((lowerMaybe $ lookup "class" y) ++ " " ++ x) y
+makeAttribute (HRefAttribute x) y = insert "href" x y
+makeAttribute (HiddenAttribute False) y = delete "hidden" y
+makeAttribute (HiddenAttribute True) y = insert "hidden" "true" y
+makeAttribute (WidthAttribute x) y = insert "width" (show x) y
+makeAttribute (HeightAttribute x) y = insert "height" (show x) y
+makeAttribute (IdAttribute x) y = insert "id" x y
+makeAttribute (DataAttribute x y) z = insert ("data-" ++ x) y z
+
 makeAttributes : List Attribute -> List (String, String)
-makeAttributes attrs =
-  mkAttr "class" makeClass
-  ++ mkAttr "id" makeId
-  ++ mkAttr "height" makeHeight
-  ++ mkAttr "width" makeWidth
-  ++ mkAttr "href" makeHRef
-  ++ mkAttr "hidden" makeHidden
-  where
-    mkAttr n m =
-      case m attrs of
-        Nothing => []
-        Just z => [(n, z)]
+makeAttributes attrs = toList $ foldl (flip makeAttribute) empty attrs
+
 
 export
 container : String -> List (Event a) -> List Attribute -> View a -> View a
