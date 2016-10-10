@@ -34,7 +34,7 @@ shuffle x =
   where
     total
     shuffle' : Vect n a -> List a -> JS_IO (List a)
-    shuffle' {n = Z} xs ys = pure []
+    shuffle' {n = Z} xs ys = pure ys
     shuffle' {n = (S k)} xs ys =
       let pos = !randomFin
       in shuffle' (deleteAt pos xs) (index pos xs :: ys)
