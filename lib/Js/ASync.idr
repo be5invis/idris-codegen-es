@@ -1,5 +1,7 @@
 module Js.ASync
 
+import Data.Vect
+
 %inline
 public export
 jscall : (fname : String) -> (ty : Type) ->
@@ -19,17 +21,23 @@ randomNat : Nat -> JS_IO Nat
 randomNat x = cast <$> randomInteger (cast x)
 
 export
+randomFin : {n: Nat} -> JS_IO (Fin (S n))
+randomFin {n} =
+  case natToFin !(randomNat (S n)) (S n) of
+    Just y => pure y
+    Nothing => pure FZ
+
+export total
 shuffle : List a -> JS_IO (List a)
 shuffle x =
-  shuffle' x [] (length x)
+  shuffle' (fromList x) []
   where
-    shuffle' : List a -> List a -> Nat -> JS_IO (List a)
-    shuffle' x r (S i) =
-      do
-        j <- randomNat (S i)
-        let (p, y::s) = splitAt j x
-        shuffle' (p++s) (y::r) (i)
-    shuffle' _ r Z = pure r
+    total
+    shuffle' : Vect n a -> List a -> JS_IO (List a)
+    shuffle' {n = Z} xs ys = pure []
+    shuffle' {n = (S k)} xs ys =
+      let pos = !randomFin
+      in shuffle' (deleteAt pos xs) (index pos xs :: ys)
 
 public export
 data ASync : Type -> Type where
