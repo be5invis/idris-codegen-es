@@ -16,7 +16,6 @@ import Control.Monad
 import Paths_idris_js
 
 data Opts = Opts { inputs :: [FilePath],
-                   interface :: Bool,
                    output :: FilePath }
 
 showUsage = do putStrLn "A code generator which is intended to be called by the compiler, not by a user."
@@ -25,20 +24,17 @@ showUsage = do putStrLn "A code generator which is intended to be called by the 
 
 getOpts :: IO Opts
 getOpts = do xs <- getArgs
-             return $ process (Opts [] False "a.out") xs
+             return $ process (Opts [] "a.out") xs
   where
     process opts ("-o":o:xs) = process (opts { output = o }) xs
-    process opts ("--interface":xs) = process (opts { interface = True }) xs
     process opts (x:xs) = process (opts { inputs = x:inputs opts }) xs
     process opts [] = opts
 
 js_main :: Opts -> Idris ()
 js_main opts = do elabPrims
                   loadInputs (inputs opts) Nothing
-                  mainProg <- if interface opts
-                                 then liftM Just elabMain
-                                 else return Nothing
-                  ir <- compile (Via IBCFormat "js") (output opts) mainProg
+                  mainProg <- elabMain
+                  ir <- compile (Via IBCFormat "js") (output opts) (Just mainProg)
                   runIO $ codegenJs ir
 
 main :: IO ()
