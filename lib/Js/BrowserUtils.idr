@@ -17,7 +17,7 @@ SimpleApp : Type -> Type -> Type
 SimpleApp a b = App a (\_=>b) b
 
 export
-mkSimpleApp : AppM b a -> (a->View b) -> (a -> b -> AppM b a) -> SimpleApp a b
+mkSimpleApp : AppM b a -> (Box -> a->View b) -> (a -> b -> AppM b a) -> SimpleApp a b
 mkSimpleApp z v u =
   MkApp
     z
@@ -97,11 +97,14 @@ public export
 data Length = Px Nat
 
 export
+Show Length where
+  show (Px n) = show n ++ "px"
+
+export
 data Attribute = CssAttribute String
                | HRefAttribute String
                | HiddenAttribute Bool
-               | WidthAttribute Length
-               | HeightAttribute Length
+               | StyleAttribute String String
                | IdAttribute String
                | DataAttribute String String
 
@@ -109,12 +112,12 @@ export
 data Event a = EventClick a
 
 export
-pxWidth : Nat -> Attribute
-pxWidth x = WidthAttribute $ Px x
+width : Length -> Attribute
+width x = StyleAttribute "width" (show x)
 
 export
-pxHeight : Nat -> Attribute
-pxHeight x = HeightAttribute $ Px x
+height : Length -> Attribute
+height x = StyleAttribute "height" (show x)
 
 export
 id : String -> Attribute
@@ -144,9 +147,6 @@ export
 hidden' : Bool -> Attribute
 hidden' = HiddenAttribute
 
-Show Length where
-  show (Px n) = show n ++ "px"
-
 
 makeEvents : List (Event a) -> List (String, a)
 makeEvents xs =
@@ -160,8 +160,7 @@ makeAttribute (CssAttribute x) y = insert "class" ((lowerMaybe $ lookup "class" 
 makeAttribute (HRefAttribute x) y = insert "href" x y
 makeAttribute (HiddenAttribute False) y = delete "hidden" y
 makeAttribute (HiddenAttribute True) y = insert "hidden" "true" y
-makeAttribute (WidthAttribute x) y = insert "width" (show x) y
-makeAttribute (HeightAttribute x) y = insert "height" (show x) y
+makeAttribute (StyleAttribute x y) z = insert "style" ((lowerMaybe $ lookup "style" z) ++ x ++ ":" ++ y ++ ";") z
 makeAttribute (IdAttribute x) y = insert "id" x y
 makeAttribute (DataAttribute x y) z = insert ("data-" ++ x) y z
 

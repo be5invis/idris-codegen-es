@@ -39,4 +39,4 @@ install_services x = do
   foxx <- require "org/arangodb/foxx"
   ctrl <- mkController foxx
   traverse  (install_service ctrl) x
-  return ()
+  pure ()
