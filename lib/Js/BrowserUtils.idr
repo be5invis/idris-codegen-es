@@ -17,7 +17,7 @@ SimpleApp : Type -> Type -> Type
 SimpleApp a b = App a (\_=>b) b
 
 export
-mkSimpleApp : AppM b a -> (Box -> a->View b) -> (a -> b -> AppM b a) -> SimpleApp a b
+mkSimpleApp : AppM b a -> (a->View b) -> (a -> b -> AppM b a) -> SimpleApp a b
 mkSimpleApp z v u =
   MkApp
     z
@@ -112,12 +112,20 @@ export
 data Event a = EventClick a
 
 export
+style : String -> String -> Attribute
+style k v = StyleAttribute k v
+
+export
 width : Length -> Attribute
-width x = StyleAttribute "width" (show x)
+width x = style "width" (show x)
 
 export
 height : Length -> Attribute
-height x = StyleAttribute "height" (show x)
+height x = style "height" (show x)
+
+export
+zindex : Nat -> Attribute
+zindex x = style "z-index" (show x)
 
 export
 id : String -> Attribute
@@ -286,3 +294,15 @@ viewBind {a} {b} x f =
     upd : Maybe a -> Either (Maybe a) b -> (Maybe a, Maybe b)
     upd _ (Left z) = (z, Nothing)
     upd _ (Right w) = (Nothing, Just w)
+
+
+flexbox : String ->  List (View a ) -> View a
+flexbox direction x = div [style "display" "flex", style "flex-direction" direction] $ concat $ map (div []) x
+
+export
+flowright : List (View a) -> View a
+flowright = flexbox "column"
+
+export
+flowdown : List (View a) -> View a
+flowdown = flexbox "row"

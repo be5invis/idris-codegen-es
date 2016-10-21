@@ -148,26 +148,12 @@ runAppM : (ASync b -> JS_IO ()) -> AppM b a -> JS_IO a
 runAppM x (MkAppM y) = y x
 
 public export
-record Box where
-  constructor MkBox
-  width : Nat
-  height: Nat
-
-getWindowBox : JS_IO Box
-getWindowBox =
-  do
-    w <- jscall "screen.availWidth" (()->JS_IO Int) ()
-    h <- jscall "screen.availHeight" (()->JS_IO Int) ()
-    pure $ MkBox (cast w) (cast h)
-
-
-public export
 data App : (a:Type) -> (a->Type) -> Type -> Type where
   MkApp : {a:Type} ->
           {f: a->Type} ->
           {b: Type} ->
           AppM b a ->
-          (Box -> (x:a) -> View (f x)) ->
+          ((x:a) -> View (f x)) ->
           ((x:a) -> f x -> AppM b a) ->
           (a -> b -> AppM b a) ->
           App a f b
@@ -191,8 +177,8 @@ stepAppInput : App a f b -> (x: a) -> f x -> AppM b a
 stepAppInput (MkApp x1 x2 x3 x4) x y = x3 x y
 
 export
-renderApp : App a f b -> Box -> (x: a) -> View (f x)
-renderApp (MkApp _ r _ _) b x = r b x
+renderApp : App a f b -> (x: a) -> View (f x)
+renderApp (MkApp _ r _ _) x = r x
 
 export
 getInit : App a f b -> AppM b a
@@ -452,7 +438,7 @@ mutual
     do
       (MkAppState st lastV cont) <- getAppState ctx
       newSt <- runAndSetAppM app ctx $ stepAppASync app st z
-      let vNew = renderApp app !(getWindowBox) newSt
+      let vNew = renderApp app newSt
       finalView <- updateNodeView (MkViewContext cont 0 id (updateApp app ctx)) lastV vNew
       setAppState ctx (MkAppState newSt finalView cont)
 
@@ -466,7 +452,7 @@ mutual
         Just z =>
           do
             newSt <- runAndSetAppM app ctx $ stepAppInput app st z
-            let vNew = renderApp app !(getWindowBox) newSt
+            let vNew = renderApp app newSt
             finalView <- updateNodeView (MkViewContext cont 0 id (updateApp app ctx)) n2 vNew
             setAppState ctx (MkAppState newSt finalView cont)
 
@@ -484,7 +470,7 @@ runApp {a} {f} {b} app =
     ctxPtr <- jscall "{}" (() -> JS_IO Ptr) ()
     let ctx = the (Ctx a f b) $ MkCtx ctxPtr
     st <- runAndSetAppM app ctx $ getInit app
-    let v = renderApp app !(getWindowBox) st
+    let v = renderApp app st
     v1 <- initView app ctx c v
     let appSt = MkAppState st v1 c
     setAppState ctx $ appSt
