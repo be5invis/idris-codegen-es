@@ -6,9 +6,10 @@ modules = Js.ASync
         , Js.Browser
         , Js.BrowserForeigns
         , Js.BrowserDom
-        , Js.BrowserBase
-        , Js.BrowserForms
-        , Js.BrowserUtils
+        , Js.BrowserApp
+	, Js.BrowserTemplate
+        , Js.Forms
+        , Js.BrowserExtra
         , Js.BrowserNetwork
         , Js.Json
         , Js.ServiceTypes

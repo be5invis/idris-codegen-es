@@ -1,13 +1,14 @@
 module Main
 
 import Js.Browser
+import Js.Forms
 
 upd : String -> String -> AppM String String
 upd x y = pure y
 
-vw : String -> View String
-vw s = textinput' ++ t s
-
+vw : STemplate String String
+--vw = div [] [bform [sonchange id] textform, dyntext [] id]
+vw = div [] [textinput [sonchange id, dynsetval (const $ Just "ola")], dyntext [] id]
 
 page : SimpleApp String String
 page = mkSimpleApp

@@ -9,6 +9,23 @@ jscall : (fname : String) -> (ty : Type) ->
 jscall fname ty = foreign FFI_JS fname ty
 
 export
+data Ctx : (b:Type) -> Type where
+  MkCtx : Ptr -> Ctx a
+
+export
+makeCtx : a -> JS_IO (Ctx a)
+makeCtx x = MkCtx <$> jscall "{val: %0}" (Ptr -> JS_IO Ptr) (believe_me x)
+
+export
+setCtx : Ctx a -> a -> JS_IO ()
+setCtx (MkCtx ctx) z = jscall "%0.val = %1" (Ptr -> Ptr -> JS_IO ()) ctx (believe_me z)
+
+export
+getCtx : Ctx a -> JS_IO a
+getCtx (MkCtx ctx) = believe_me <$> jscall "%0.val" ( Ptr -> JS_IO Ptr) ctx
+
+
+export
 random : JS_IO Double
 random = jscall "Math.random()" (() -> JS_IO Double) ()
 
