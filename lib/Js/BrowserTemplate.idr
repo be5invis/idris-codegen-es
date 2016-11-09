@@ -3,17 +3,9 @@ module BrowserTemplate
 import Js.BrowserDom
 import public Data.Vect
 import Js.ASync
+import public Js.TemplateStyle
 
 
-{-
-export
-data Attribute = CssAttribute String
-               | HRefAttribute String
-               | HiddenAttribute Bool
-               | StyleAttribute String String
-               | IdAttribute String
-               | DataAttribute String String
--}
 
 data InputType = IText
 
@@ -24,6 +16,7 @@ inputTypeTy IText = String
 public export
 data Attribute : (a:Type) -> (a->Type) -> Type where
   EventClick : ((x:a) -> f x) -> Attribute a f
+  StyleAttribute : List Style -> Attribute a f
 
 public export
 data InputAttribute : (a:Type) -> (a->Type) -> Type -> Type where
@@ -50,6 +43,7 @@ data Template : (a:Type) -> (a->Type) -> Type where
   FoldNode : b -> (b->i->(b,Maybe r)) -> Template b (const i) -> List (FoldAttribute a f b r) -> Template a f
   FormNode : ((x:a) -> f x) -> List (Attribute a f) -> List (Template a f) -> Template a f
   ListTemplateNode : Eq b => (a -> List b) -> Template (a,b) (f . Prelude.Basics.fst) -> Template a f
+  ImgNode : List (Attribute a f) -> String -> Template a f
 
 data Update : Type -> Type where
   MkUpdate : (a -> b) -> (b -> b -> JS_IO ()) -> Update a
@@ -74,6 +68,8 @@ procClick get pr h () =
 initAttribute : DomNode -> JS_IO a -> ((x:a) -> f x -> JS_IO ()) -> Attribute a f -> JS_IO ()
 initAttribute n getst proc (EventClick h) =
   registEvent (procClick getst proc h) n "click" (pure ())
+initAttribute n getst proc (StyleAttribute l) =
+  setStyle l n
 
 initAttributes : DomNode -> JS_IO a -> ((x:a) -> f x -> JS_IO ()) -> List (Attribute a f) -> JS_IO ()
 initAttributes n getst proc attrs = sequence_ $ map (initAttribute n getst proc) attrs
@@ -244,6 +240,13 @@ mutual
       upds <- addListTemplateNodes 0 nd v getst proc h t (h v)
       ctxU <- makeCtx upds
       pure [MkUpdate id (updateLT nd getst proc h t ctxU)]
+  initTemplate' n v getst proc (ImgNode attrs x) =
+    do
+      nd <- appendNode "img" n
+      initAttributes nd getst proc attrs
+      setAttribute nd ("src", x)
+      pure []
+
 
 
 export
@@ -302,3 +305,11 @@ foldTemplate = FoldNode
 export
 listTemplate : Eq b => (a -> List b) -> Template (a,b) (f . Prelude.Basics.fst) -> Template a f
 listTemplate = ListTemplateNode
+
+export
+img : List (Attribute a f) -> String -> Template a f
+img = ImgNode
+
+export
+style : List Style -> Attribute a f
+style = StyleAttribute
