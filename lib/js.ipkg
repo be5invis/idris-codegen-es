@@ -12,6 +12,8 @@ modules = Js.ASync
         , Js.Forms
         , Js.BrowserExtra
         , Js.BrowserNetwork
+	, Js.SVG
+	, Js.X3dom
         , Js.Json
         , Js.ServiceTypes
         , Js.Node

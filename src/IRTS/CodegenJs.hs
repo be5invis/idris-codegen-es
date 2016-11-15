@@ -213,9 +213,8 @@ cgConst x | isTypeConst x = JsInt 0
 cgConst x = error $ "Constant " ++ show x ++ " not compilable yet"
 
 cgOp :: PrimFn -> [JsAST] -> JsAST
-cgOp (LPlus (ATInt _)) [l, r] =
-  JsBinOp "+" l r
-cgOp (LMinus (ATInt _)) [l, r] = JsBinOp "-" l r
+cgOp (LPlus _) [l, r] = JsBinOp "+" l r
+cgOp (LMinus _) [l, r] = JsBinOp "-" l r
 cgOp (LTimes _) [l, r] = JsBinOp "*" l r
 cgOp (LEq (ATInt _)) [l, r] = JsB2I $ JsBinOp "==" l r
 cgOp (LSLt (ATInt _)) [l, r] = JsB2I $ JsBinOp "<" l r
@@ -223,7 +222,6 @@ cgOp (LSLe (ATInt _)) [l, r] = JsB2I $ JsBinOp "<=" l r
 cgOp (LSGt (ATInt _)) [l, r] = JsB2I $ JsBinOp ">" l r
 cgOp (LSGe (ATInt _)) [l, r] = JsB2I $ JsBinOp ">=" l r
 cgOp LStrEq [l,r] = JsB2I $ JsBinOp "==" l r
---cgOp LStrRev [x] = "strrev(" ++ x ++ ")"
 cgOp LStrLen [x] = JsForeign "%0.length" [x]
 cgOp LStrHead [x] = JsMethod x "charCodeAt" [JsInt 0]
 cgOp LStrIndex [x, y] = JsMethod x "charCodeAt" [y]
@@ -240,12 +238,8 @@ cgOp (LSExt _ _) [x] = x
 cgOp (LZExt _ _) [x] = x
 cgOp (LIntFloat _) [x] = x
 cgOp (LSDiv _) [x,y] = JsBinOp "/" x y
-{-
-cgOp (LIntCh _) [x] = x
-cgOp (LTrunc _ _) [x] = x
--}
 cgOp LWriteStr [_,str] = JsApp "console.log" [str]
---cgOp LReadStr [_] = "idris_readStr()"
 cgOp LStrConcat [l,r] = JsBinOp "+" l r
 cgOp LStrCons [l,r] = JsForeign "String.fromCharCode(%0) + %1" [l,r]
+cgOp (LSRem (ATInt _)) [l,r] = JsBinOp "%" l r
 cgOp op exps = error ("Operator " ++ show (op, exps) ++ " not implemented")

@@ -5,6 +5,34 @@ import public Data.Vect
 import Js.ASync
 import public Js.TemplateStyle
 
+public export
+data Gen a b = GenConst b | GenA (a->b)
+
+public export
+interface IGen c a b where
+  getGen : c -> Gen a b
+
+export
+IGen b a b where
+  getGen x = GenConst x
+
+export
+IGen (a -> b) a b where
+  getGen x = GenA x
+
+export
+Functor (Gen a) where
+  map f (GenConst x) = GenConst (f x)
+  map f (GenA x) = GenA (f . x)
+
+export
+Applicative (Gen a) where
+  pure = GenConst
+
+  (<*>) (GenConst f) fa = f <$> fa
+  (<*>) (GenA f) (GenA fa) = GenA (\x => (f x) (fa x))
+  (<*>) (GenA f) (GenConst fa) = GenA (\x => (f x) fa)
+
 
 
 data InputType = IText
@@ -16,7 +44,7 @@ inputTypeTy IText = String
 public export
 data Attribute : (a:Type) -> (a->Type) -> Type where
   EventClick : ((x:a) -> f x) -> Attribute a f
-  StyleAttribute : List Style -> Attribute a f
+  StrAttribute : String -> Gen a String -> Attribute a f
 
 public export
 data InputAttribute : (a:Type) -> (a->Type) -> Type -> Type where
@@ -33,8 +61,9 @@ data FoldAttribute : (a:Type) -> (a -> Type) -> Type -> Type -> Type where
 
 export
 data Template : (a:Type) -> (a->Type) -> Type where
-  ContainerNode : String -> List (Attribute a f) ->
-                    List (Template a f) -> Template a f
+  CustomNode : String -> List (Attribute a f) -> List (Template a f) -> Template a f
+--  ContainerNode : String -> List (Attribute a f) ->
+--                    List (Template a f) -> Template a f
   TextNode : List (Attribute a f) -> String -> Template a f
   DynTextNode : List (Attribute a f) ->
                   (a -> String) -> Template a f
@@ -65,14 +94,27 @@ procClick get pr h () =
     x <- get
     pr x (h x)
 
-initAttribute : DomNode -> JS_IO a -> ((x:a) -> f x -> JS_IO ()) -> Attribute a f -> JS_IO ()
-initAttribute n getst proc (EventClick h) =
-  registEvent (procClick getst proc h) n "click" (pure ())
-initAttribute n getst proc (StyleAttribute l) =
-  setStyle l n
+updateStrAttribute : DomNode -> String -> String -> String -> JS_IO ()
+updateStrAttribute n name x1 x2 =
+  if x1 == x2 then pure ()
+    else setAttribute n (name, x2)
 
-initAttributes : DomNode -> JS_IO a -> ((x:a) -> f x -> JS_IO ()) -> List (Attribute a f) -> JS_IO ()
-initAttributes n getst proc attrs = sequence_ $ map (initAttribute n getst proc) attrs
+initAttribute : a -> DomNode -> JS_IO a -> ((x:a) -> f x -> JS_IO ()) -> Attribute a f -> JS_IO (Maybe (Update a))
+initAttribute _ n getst proc (EventClick h) =
+  do
+    registEvent (procClick getst proc h) n "click" (pure ())
+    pure Nothing
+initAttribute _ n getst proc (StrAttribute name (GenConst x) ) =
+  do
+    setAttribute n (name, x)
+    pure Nothing
+initAttribute v n getst proc (StrAttribute name (GenA x) ) =
+  do
+    setAttribute n (name, x v)
+    pure $ Just $ MkUpdate x (updateStrAttribute n name)
+
+initAttributes : a -> DomNode -> JS_IO a -> ((x:a) -> f x -> JS_IO ()) -> List (Attribute a f) -> JS_IO (List (Update a))
+initAttributes v n getst proc attrs = (catMaybes<$>) $ sequence $ map (initAttribute v n getst proc) attrs
 
 procSetVal : DomNode -> Maybe String -> JS_IO ()
 procSetVal _ Nothing = pure ()
@@ -81,10 +123,8 @@ procSetVal n (Just z) =
 
 initAttributeInp : a -> DomNode -> JS_IO a -> ((x:a) -> f x -> JS_IO ()) ->
                       (String -> y) -> (y -> String) -> InputAttribute a f y -> JS_IO (Maybe (Update a))
-initAttributeInp _ n getst proc _ _ (GenAttr x) =
-  do
-    initAttribute n getst proc x
-    pure Nothing
+initAttributeInp v n getst proc _ _ (GenAttr x) =
+    initAttribute v n getst proc x
 initAttributeInp _ n getst proc f _ (OnChange h) =
   do
     registEvent (procChange getst proc f h) n "change" targetValue
@@ -193,23 +233,23 @@ mutual
           Just y => (x, y)
 
   initTemplate' : DomNode -> a -> JS_IO a -> ((x:a) -> f x -> JS_IO ()) -> Template a f -> JS_IO (Updates a)
-  initTemplate' n v getst proc (ContainerNode tag attrs childs) =
+  initTemplate' n v getst proc (CustomNode tag attrs childs) =
     do
       newn <- appendNode tag n
-      initAttributes newn getst proc attrs
-      concat <$> (sequence $ map (initTemplate' newn v getst proc) childs)
+      attrsUpds <- initAttributes v newn getst proc attrs
+      childsUpds <- concat <$> (sequence $ map (initTemplate' newn v getst proc) childs)
+      pure $ attrsUpds ++ childsUpds
   initTemplate' n v getst proc (TextNode attrs str) =
     do
       newn <- appendNode "span" n
       setText str newn
-      initAttributes newn getst proc attrs
-      pure []
+      initAttributes v newn getst proc attrs
   initTemplate' n v getst proc (DynTextNode attrs getter) =
     do
       newn <- appendNode "span" n
       setText (getter v) newn
-      initAttributes newn getst proc attrs
-      pure [MkUpdate getter (\x,y => if x ==y then pure () else setText y newn)]
+      attrsUpds <- initAttributes v newn getst proc attrs
+      pure (MkUpdate getter (\x,y => if x ==y then pure () else setText y newn) :: attrsUpds)
   initTemplate' n v getst proc (InputNode IText attrs) =
     do
       i <- appendNode "input" n
@@ -232,8 +272,9 @@ mutual
     do
       frm <- appendNode "form" n
       registEvent (procClick getst proc submit) frm "submit" preventDefault
-      initAttributes frm getst proc attrs
-      concat <$> (sequence $ map (initTemplate' frm v getst proc) childs)
+      attrsUpds <- initAttributes v frm getst proc attrs
+      childsUpds <- concat <$> (sequence $ map (initTemplate' frm v getst proc) childs)
+      pure $ attrsUpds ++ childsUpds
   initTemplate' n v getst proc (ListTemplateNode h t) =
     do
       nd <- appendNode "span" n
@@ -243,9 +284,8 @@ mutual
   initTemplate' n v getst proc (ImgNode attrs x) =
     do
       nd <- appendNode "img" n
-      initAttributes nd getst proc attrs
       setAttribute nd ("src", x)
-      pure []
+      initAttributes v nd getst proc attrs
 
 
 
@@ -264,11 +304,11 @@ updateTemplate x (MkTemplateState n oldx upds) =
 ---------- Primitives -------------
 export
 span : List (Attribute a f) -> List (Template a f) -> Template a f
-span = ContainerNode "span"
+span = CustomNode "span"
 
 export
 div : List (Attribute a f) -> List (Template a f) -> Template a f
-div = ContainerNode "div"
+div = CustomNode "div"
 
 export
 textinput : List (InputAttribute a f String) ->
@@ -311,5 +351,9 @@ img : List (Attribute a f) -> String -> Template a f
 img = ImgNode
 
 export
-style : List Style -> Attribute a f
-style = StyleAttribute
+style : IGen s a (List Style) => s -> Attribute a f
+style x = StrAttribute "style" (map styleStr $ getGen x)
+
+export
+customNode : String -> List (Attribute a f) -> List (Template a f) -> Template a f
+customNode = CustomNode

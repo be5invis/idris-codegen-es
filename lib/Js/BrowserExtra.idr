@@ -23,17 +23,3 @@ mkSimpleApp z v u =
 export
 sonchange : (c -> b) -> InputAttribute  a (const b) c
 sonchange h = onchange (\_,z=>h z)
-
-
---listTemplate : Eq b => (a -> List b) -> Template (a,b) (f . Prelude.Basics.fst) -> Template a f
-
---export
---slistTemplate : Eq b => (a -> List b) -> Template
-
-{-
-export
-sfoldTemplate : b -> (STemplate b e) ->
-                (b -> e -> (b, Maybe r)) ->
-                  STemplate a r
-sfoldTemplate x y z = foldTemplate x y (\_,w,k=>z w k)
--}
