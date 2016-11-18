@@ -26,14 +26,18 @@ width x = MkStyle "width" (show x)
 public export
 data FlexDirection = Row | Column
 
+Show FlexDirection where
+  show Row = "row"
+  show Column = "column"
+
 public export
-data FlexOptions = Direction FlexDirection
+data FlexOption = Direction FlexDirection
 
 
 export
-flex : List FlexOptions -> Style
+flex : List FlexOption -> Style
 flex x =
   CompStyle (MkStyle "display" "flex" :: map stlopt x)
   where
-    stlopt (FlexDirection Row) = MkStyle "flex-direction" "row"
-    stlopt (FlexDirection Column) = MkStyle "flex-direction" "column"
+    stlopt : FlexOption -> Style
+    stlopt (Direction x) = MkStyle "flex-direction" (show x)
