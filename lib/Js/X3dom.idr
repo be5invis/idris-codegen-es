@@ -142,7 +142,3 @@ rgb = DiffuseRGB
 export
 viewPoint : Point3 -> Point3 -> Double -> SceneOption a
 viewPoint = ViewPoint
-
-export
-viewPointLookAt : Point3 -> Point3 -> SceneOption a
-viewPointLookAt x y = viewPoint x 

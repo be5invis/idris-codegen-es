@@ -62,8 +62,6 @@ data FoldAttribute : (a:Type) -> (a -> Type) -> Type -> Type -> Type where
 export
 data Template : (a:Type) -> (a->Type) -> Type where
   CustomNode : String -> List (Attribute a f) -> List (Template a f) -> Template a f
---  ContainerNode : String -> List (Attribute a f) ->
---                    List (Template a f) -> Template a f
   TextNode : List (Attribute a f) -> String -> Template a f
   DynTextNode : List (Attribute a f) ->
                   (a -> String) -> Template a f
@@ -71,7 +69,7 @@ data Template : (a:Type) -> (a->Type) -> Type where
                   Template a f
   FoldNode : b -> (b->i->(b,Maybe r)) -> Template b (const i) -> List (FoldAttribute a f b r) -> Template a f
   FormNode : ((x:a) -> f x) -> List (Attribute a f) -> List (Template a f) -> Template a f
-  ListTemplateNode : Eq b => (a -> List b) -> Template (a,b) (f . Prelude.Basics.fst) -> Template a f
+  ListTemplateNode : (a -> List b) -> Template (a,b) (f . Prelude.Basics.fst) -> Template a f
   ImgNode : List (Attribute a f) -> String -> Template a f
 
 data Update : Type -> Type where
@@ -343,7 +341,7 @@ foldTemplate : b -> (b->i->(b,Maybe r)) -> Template b (const i) -> List (FoldAtt
 foldTemplate = FoldNode
 
 export
-listTemplate : Eq b => (a -> List b) -> Template (a,b) (f . Prelude.Basics.fst) -> Template a f
+listTemplate : (a -> List b) -> Template (a,b) (f . Prelude.Basics.fst) -> Template a f
 listTemplate = ListTemplateNode
 
 export

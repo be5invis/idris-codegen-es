@@ -169,7 +169,7 @@ decodeJS (SList x) p =
     isArray <- jscall "(Array.isArray(%0))+0" (Ptr -> JS_IO Int) p
     if isArray == 1 then
       do
-        len <- jscall "p.length" (Ptr -> JS_IO Int) p
+        len <- jscall "%0.length" (Ptr -> JS_IO Int) p
         if len >0 then
           do
             pfirst <- jscall "%0[0]" (Ptr -> JS_IO Ptr) p
