@@ -3,7 +3,20 @@ module BrowserTemplate
 import Js.BrowserDom
 import public Data.Vect
 import Js.ASync
-import public Js.TemplateStyle
+
+
+public export
+data Style = MkStyle String String
+           | CompStyle (List Style)
+
+mutual
+  styleStr' : Style -> String
+  styleStr' (MkStyle k x) = k ++ ":" ++ x ++ ";"
+  styleStr' (CompStyle x) = styleStr x
+
+  styleStr : List Style -> String
+  styleStr x = foldl (\z,w => z ++ styleStr' w) "" x
+
 
 public export
 data Gen a b = GenConst b | GenA (a->b)
@@ -69,11 +82,15 @@ data Template : (a:Type) -> (a->Type) -> Type where
                   Template a f
   FoldNode : b -> (b->i->(b,Maybe r)) -> Template b (const i) -> List (FoldAttribute a f b r) -> Template a f
   FormNode : ((x:a) -> f x) -> List (Attribute a f) -> List (Template a f) -> Template a f
-  ListTemplateNode : (a -> List b) -> Template (a,b) (f . Prelude.Basics.fst) -> Template a f
+  ListTemplateNode : String -> List (Attribute a f) -> (a -> List b) ->
+                          Template (a,b) (f . Prelude.Basics.fst) -> Template a f
   ImgNode : List (Attribute a f) -> String -> Template a f
 
 data Update : Type -> Type where
   MkUpdate : (a -> b) -> (b -> b -> JS_IO ()) -> Update a
+
+Remove : Type
+Remove = JS_IO ()
 
 Updates : Type -> Type
 Updates a = List (Update a)
@@ -189,24 +206,32 @@ updateFold ctxU ctxS updfn geta attrs proc st e =
       Nothing => pure ()
       Just x => procOnEvent geta proc x attrs
 
+removeListNodes : List (Remove, Updates a) -> JS_IO ()
+removeListNodes x =
+  sequence_ $ map fst x
 
 mutual
 
   updateListTemplate : Nat -> DomNode -> a -> a -> JS_IO a ->
                             ((x:a) -> f x -> JS_IO ()) -> (a -> List b) ->
                               Template (a,b) (f . Prelude.Basics.fst) ->
-                                List b -> List b -> List (Updates (a,b)) -> JS_IO (List (Updates (a, b)))
-  updateListTemplate pos nd v v' getst proc h t (x::xs) (y::ys) (u::us) =
+                                List b -> List b -> List (Remove, Updates (a,b)) -> JS_IO (List (Remove, Updates (a, b)))
+  updateListTemplate pos nd v v' getst proc h t (x::xs) (y::ys) ((r,u)::us) =
     do
       procUpdates (v,x) (v',y) u
       us' <- updateListTemplate (S pos) nd v v' getst proc h t xs ys us
-      pure $ u::us'
+      pure $ (r,u)::us'
   updateListTemplate pos nd v v' getst proc h t [] ys [] =
     addListTemplateNodes pos nd v' getst proc h t ys
+  updateListTemplate pos nd v v' getst proc h t xs [] us =
+    do
+      removeListNodes us
+      pure []
+
 
   updateLT : DomNode -> JS_IO a ->
               ((x:a) -> f x -> JS_IO ()) -> (a -> List b) ->
-                  Template (a,b) (f . Prelude.Basics.fst) -> Ctx (List (Updates (a,b))) ->
+                  Template (a,b) (f . Prelude.Basics.fst) -> Ctx (List (Remove,Updates (a,b))) ->
                     a -> a -> JS_IO ()
   updateLT nd getst proc h t ctx o n =
     do
@@ -216,12 +241,11 @@ mutual
 
   addListTemplateNodes : Nat -> DomNode -> a -> JS_IO a ->
                             ((x:a) -> f x -> JS_IO ()) -> (a -> List b) ->
-                              Template (a,b) (f . Prelude.Basics.fst) -> List b -> JS_IO (List (Updates (a, b)))
+                              Template (a,b) (f . Prelude.Basics.fst) -> List b -> JS_IO (List (Remove, Updates (a, b)))
   addListTemplateNodes {a} {b} pos nd v getst proc h t [] = pure []
   addListTemplateNodes {a} {b} pos nd v getst proc h t (x::xs) =
     do
-      c <- appendNode "span" nd
-      us <- initTemplate' c (v, x) (getstAux <$> getst) (\(z,_),w=>proc z w) t
+      us <- initTemplate' nd (v, x) (getstAux <$> getst) (\(z,_),w=>proc z w) t
       us' <- addListTemplateNodes (S pos) nd v getst proc h t xs
       pure $ us :: us'
     where
@@ -230,66 +254,76 @@ mutual
         case index' pos $ h x of
           Just y => (x, y)
 
-  initTemplate' : DomNode -> a -> JS_IO a -> ((x:a) -> f x -> JS_IO ()) -> Template a f -> JS_IO (Updates a)
+  initChilds : DomNode -> a -> JS_IO a -> ((x:a) -> f x -> JS_IO ()) -> List (Template a f) -> JS_IO (Remove, Updates a)
+  initChilds n v getst proc childs =
+    do
+      w <- (sequence $ map (initTemplate' n v getst proc) childs)
+      pure (sequence_ $ map fst w, concat $ map snd w)
+
+  initTemplate' : DomNode -> a -> JS_IO a -> ((x:a) -> f x -> JS_IO ()) -> Template a f -> JS_IO (Remove, Updates a)
   initTemplate' n v getst proc (CustomNode tag attrs childs) =
     do
-      newn <- appendNode tag n
+      newn <- appendNode n tag
       attrsUpds <- initAttributes v newn getst proc attrs
-      childsUpds <- concat <$> (sequence $ map (initTemplate' newn v getst proc) childs)
-      pure $ attrsUpds ++ childsUpds
+      (cr, childsUpds) <- initChilds newn v getst proc childs
+      pure (cr >>= \_ => removeDomNode newn, attrsUpds ++ childsUpds)
   initTemplate' n v getst proc (TextNode attrs str) =
     do
-      newn <- appendNode "span" n
+      newn <- appendNode n "span"
       setText str newn
-      initAttributes v newn getst proc attrs
+      attrUpds <- initAttributes v newn getst proc attrs
+      pure (removeDomNode newn, attrUpds)
   initTemplate' n v getst proc (DynTextNode attrs getter) =
     do
-      newn <- appendNode "span" n
+      newn <- appendNode n "span"
       setText (getter v) newn
       attrsUpds <- initAttributes v newn getst proc attrs
-      pure (MkUpdate getter (\x,y => if x ==y then pure () else setText y newn) :: attrsUpds)
+      pure (removeDomNode newn, MkUpdate getter (\x,y => if x ==y then pure () else setText y newn) :: attrsUpds)
   initTemplate' n v getst proc (InputNode IText attrs) =
     do
-      i <- appendNode "input" n
+      i <- appendNode n "input"
       setAttribute i ("type", "text")
-      initAttributesInp v i getst proc id id attrs
+      attrsUpds <- initAttributesInp v i getst proc id id attrs
+      pure (removeDomNode i, attrsUpds)
   initTemplate' n v getst proc (FoldNode {a} {f} {b} {i} {r} s0 fupd t attrs) =
     do
-      node <- appendNode "span" n
       ctxS <- makeCtx s0
       ctxU <- makeCtx []
-      upds <- initTemplate'
-                node
+      (r, upds) <- initTemplate'
+                n
                 s0
                 (getCtx ctxS)
                 (updateFold {a=a} {f=f} {b=b} {i=i} ctxU ctxS fupd getst attrs proc)
                 t
       setCtx ctxU upds
-      pure $ calcFoldUpdatesList ctxU ctxS attrs
+      pure (r, calcFoldUpdatesList ctxU ctxS attrs)
   initTemplate' n v getst proc (FormNode submit attrs childs) =
     do
-      frm <- appendNode "form" n
+      frm <- appendNode n "form"
       registEvent (procClick getst proc submit) frm "submit" preventDefault
       attrsUpds <- initAttributes v frm getst proc attrs
-      childsUpds <- concat <$> (sequence $ map (initTemplate' frm v getst proc) childs)
-      pure $ attrsUpds ++ childsUpds
-  initTemplate' n v getst proc (ListTemplateNode h t) =
+      (cr, childsUpds) <- initChilds frm v getst proc childs
+      pure (cr >>= \_ => removeDomNode frm, attrsUpds ++ childsUpds)
+  initTemplate' n v getst proc (ListTemplateNode tag attrs h t) =
     do
-      nd <- appendNode "span" n
-      upds <- addListTemplateNodes 0 nd v getst proc h t (h v)
+      newn <- appendNode n tag
+      attrsUpds <- initAttributes v newn getst proc attrs
+      upds <- addListTemplateNodes 0 newn v getst proc h t (h v)
       ctxU <- makeCtx upds
-      pure [MkUpdate id (updateLT nd getst proc h t ctxU)]
+      pure (getCtx ctxU >>= removeListNodes >>= \_ => removeDomNode newn
+           , (MkUpdate id (updateLT newn getst proc h t ctxU)) :: attrsUpds)
   initTemplate' n v getst proc (ImgNode attrs x) =
     do
-      nd <- appendNode "img" n
+      nd <- appendNode n "img"
       setAttribute nd ("src", x)
-      initAttributes v nd getst proc attrs
+      attrsUpds <- initAttributes v nd getst proc attrs
+      pure (removeDomNode nd, attrsUpds)
 
 
 
 export
 initTemplate : DomNode -> a -> JS_IO a -> ((x:a) -> f x -> JS_IO ()) -> Template a f -> JS_IO (TemplateState a)
-initTemplate n v getst proc t = pure $ MkTemplateState n v !(initTemplate' n v getst proc t)
+initTemplate n v getst proc t = pure $ MkTemplateState n v (snd !(initTemplate' n v getst proc t))
 
 export
 updateTemplate : a -> TemplateState a-> JS_IO (TemplateState a)
@@ -341,8 +375,8 @@ foldTemplate : b -> (b->i->(b,Maybe r)) -> Template b (const i) -> List (FoldAtt
 foldTemplate = FoldNode
 
 export
-listTemplate : (a -> List b) -> Template (a,b) (f . Prelude.Basics.fst) -> Template a f
-listTemplate = ListTemplateNode
+listOnDiv : List (Attribute a f) -> (a -> List b) -> Template (a,b) (f . Prelude.Basics.fst) -> Template a f
+listOnDiv = ListTemplateNode "div"
 
 export
 img : List (Attribute a f) -> String -> Template a f

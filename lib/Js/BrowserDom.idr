@@ -33,8 +33,8 @@ Monad DomEvent where
 
 
 export
-appendNode : String -> DomNode -> JS_IO DomNode
-appendNode tag (MkDomNode n) = MkDomNode <$> appendChild n !(createElement tag)
+appendNode : DomNode -> String -> JS_IO DomNode
+appendNode (MkDomNode n) tag = MkDomNode <$> appendChild n !(createElement tag)
 
 
 export
@@ -54,8 +54,25 @@ clear (MkDomNode x) = clearContents x
 
 export
 removeChild : Nat -> DomNode -> JS_IO ()
-removeChild n (MkDomNode node) = removeChildNode node (cast n)
+removeChild n (MkDomNode node) = removeChildNode node !(childNode (cast n) node)
 
+export
+parent : DomNode -> JS_IO (Maybe DomNode)
+parent (MkDomNode x) =
+  do
+    p <- parentNode x
+    und <- isUndefined p
+    if und then
+      pure Nothing
+      else pure $ Just $ MkDomNode p
+
+
+export
+removeDomNode : DomNode -> JS_IO ()
+removeDomNode n@(MkDomNode n') =
+  case !(parent n) of
+    Nothing => pure ()
+    Just (MkDomNode p) => removeChildNode p n'
 
 export
 body : JS_IO DomNode
@@ -88,8 +105,8 @@ insertNodePos tag node@(MkDomNode y) pos =
   do
     c <- child pos node
     case c of
-      Nothing => appendNode tag node
-      Just (MkDomNode z) => MkDomNode <$> insertBefore y !(createElement tag) z
+      Nothing => appendNode node tag
+      Just (MkDomNode z) => MkDomNode <$> insertBeforeNode y !(createElement tag) z
 
 export
 setAttribute : DomNode -> (String, String) -> JS_IO ()

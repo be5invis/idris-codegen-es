@@ -14,8 +14,8 @@ clearContents x =
   (Ptr -> JS_IO ())
   x
 
-removeChildNode : Ptr -> Int -> JS_IO ()
-removeChildNode node pos = jscall "%0.removeChild(%0.childNodes[%1] )" (Ptr -> Int -> JS_IO ()) node pos
+removeChildNode : Ptr -> Ptr -> JS_IO ()
+removeChildNode node child = jscall "%0.removeChild(%1)" (Ptr -> Ptr -> JS_IO ()) node child
 
 childNode : Int -> Ptr -> JS_IO Ptr
 childNode pos node = jscall "%0.childNodes[%1]" (Ptr -> Int -> JS_IO Ptr) node pos
@@ -27,11 +27,18 @@ setTextContent node s = jscall "%0.textContent = %1" (Ptr -> String -> JS_IO ())
 appendChild : Ptr -> Ptr -> JS_IO Ptr
 appendChild node child = jscall "%0.appendChild(%1)" (Ptr -> Ptr -> JS_IO Ptr) node child
 
-insertBefore : Ptr -> Ptr -> Ptr -> JS_IO Ptr
-insertBefore node new next = jscall "%0.insertBefore(%1,%2)" (Ptr -> Ptr -> Ptr -> JS_IO Ptr) node new next
+insertBeforeNode : Ptr -> Ptr -> Ptr -> JS_IO Ptr
+insertBeforeNode node new next = jscall "%0.insertBefore(%1,%2)" (Ptr -> Ptr -> Ptr -> JS_IO Ptr) node new next
 
-parent : Ptr -> JS_IO Ptr
-parent node = jscall "%0.parentNode" (Ptr -> JS_IO Ptr) node
+parentNode : Ptr -> JS_IO Ptr
+parentNode node = jscall "%0.parentNode" (Ptr -> JS_IO Ptr) node
+
+isUndefined : Ptr -> JS_IO Bool
+isUndefined x =
+  do
+    i <- jscall "(%0 == undefined)+0" (Ptr -> JS_IO Int) x
+    if i == 0 then pure False
+      else pure True
 
 docBody : JS_IO Ptr
 docBody = jscall "document.body" (() -> JS_IO Ptr) ()
