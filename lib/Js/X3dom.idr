@@ -49,10 +49,10 @@ foldTransforms x =
         ((\(x,y,z),(x',y',z') => (x*x',y*y',z*z')) <$> s <*> s')
 
 export
-data Element : (a:Type) -> (a->Type) -> Type where
-  Sphere : Appearance -> Element a f
-  Box : Appearance -> Element a f
-  TransformElem : List (Transform a) -> List (Element a f) -> Element a f
+data Element : Type -> Type -> Type where
+  Sphere : Appearance -> Element a b
+  Box : Appearance -> Element a b
+  TransformElem : List (Transform a) -> List (Element a b) -> Element a b
 
 appearanceToTemplate : Appearance -> Template a f
 appearanceToTemplate (DiffuseRGB r g b) =

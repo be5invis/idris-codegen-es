@@ -23,7 +23,7 @@ data FormEvent a = Value a | Submit
 
 public export
 data Form : (a:Type) -> Type where
-  MkForm : (MError a) -> ({b:Type} -> {c:Type} -> (MError a -> b) -> (c -> Maybe (MError a)) -> List (STemplate c b)) -> Form a
+  MkForm : (MError a) -> ({b:Type} -> {c:Type} -> (MError a -> b) -> (c -> Maybe (MError a)) -> List (Template c b)) -> Form a
 
 
 
@@ -57,7 +57,7 @@ bform {b} attrs (MkForm init tmpl) =
 export
 textform : Form String
 textform =
-  MkForm (Left []) (\proce, procs => [textinput [sonchange (sch proce), dynsetval (sval procs)]])
+  MkForm (Left []) (\proce, procs => [textinput [onchange' (sch proce), dynsetval (sval procs)]])
   where
     sval : (c -> Maybe (MError String)) -> c -> Maybe String
     sval p x =

@@ -3,6 +3,7 @@ package js
 pkgs = contrib, lightyear, pruviloj
 
 modules = Js.ASync
+	, Js.Utils
         , Js.Browser
         , Js.BrowserForeigns
         , Js.BrowserDom

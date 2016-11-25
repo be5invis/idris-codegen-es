@@ -3,8 +3,8 @@ module SVG
 import Js.Browser
 
 export
-data SVG : (a:Type) -> (a->Type) -> Type where
-  ImageSvg : Gen a Int -> Gen a Int -> Gen a Nat -> Gen a Nat -> Gen a String -> SVG a f
+data SVG : Type -> Type -> Type where
+  ImageSvg : Gen a Int -> Gen a Int -> Gen a Nat -> Gen a Nat -> Gen a String -> SVG a b
 
 posx : Gen a Int -> Attribute a f
 posx x = StrAttribute "x" (map show x)

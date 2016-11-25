@@ -1,25 +1,35 @@
 module Js.BrowserExtra
 
 import Js.BrowserApp
-import public Js.BrowserTemplate
 
-public export
-STemplate : Type -> Type -> Type
-STemplate x y = Template x (const y)
+%access export
 
-public export
-SimpleApp : Type -> Type -> Type
-SimpleApp a b = App a (\_=>b) b
+onchange' : (c -> b) -> InputAttribute  a b c
+onchange' f = onchange (\_,x=> f x)
 
-export
-mkSimpleApp : AppM b a -> (STemplate a b) -> (a -> b -> AppM b a) -> SimpleApp a b
-mkSimpleApp z v u =
-  MkApp
-    z
-    v
-    u
-    u
 
-export
-sonchange : (c -> b) -> InputAttribute  a (const b) c
-sonchange h = onchange (\_,z=>h z)
+
+private
+maybeConsIdx : Maybe a -> Fin 2
+maybeConsIdx Nothing = 0
+maybeConsIdx (Just _) = 1
+
+private
+maybeConsIdxType : Type -> Fin 2 -> Type
+maybeConsIdxType a FZ = ()
+maybeConsIdxType a (FS FZ) = a
+
+
+maybeTemplateSpan : List (Attribute (Maybe a) b) -> Template () b -> Template a b -> Template (Maybe a) b
+maybeTemplateSpan {a} {b} attrs tNothing tJust =
+  caseTemplateSpan attrs f m2dp templs
+  where
+    f : Fin 2 -> Type
+    f = [(), a]
+    m2dp : Maybe a -> DPair (Fin 2) f
+    m2dp Nothing = (0 ** ())
+    m2dp (Just x) = (1 ** x)
+    templs : (x: Fin 2) -> Template (f x) b
+    templs FZ = tNothing
+    templs (FS FZ) = tJust
+    --templs = [tNothing, tJust]
