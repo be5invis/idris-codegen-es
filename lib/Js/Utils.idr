@@ -19,6 +19,10 @@ jscall : (fname : String) -> (ty : Type) ->
 jscall fname ty = foreign FFI_JS fname ty
 
 export
+debugError : String -> JS_IO a
+debugError s = believe_me <$> jscall "throw2(%0)" (String -> JS_IO ()) s
+
+export
 isUndefined : Ptr -> JS_IO Bool
 isUndefined x =
   do

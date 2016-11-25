@@ -29,7 +29,7 @@ handleErr x  =
   do
     z <- err2Either x
     case z of
-      Left e => error e
+      Left e => debugError e
       Right res => pure res
 
 export

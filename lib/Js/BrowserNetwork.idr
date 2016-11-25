@@ -19,4 +19,4 @@ callRPC group name p val =
     res <- httpPost name (encode e1 val)
     case decode e2 res of
       Right x => pure x
-      Left err => error err
+      Left err => debugError err

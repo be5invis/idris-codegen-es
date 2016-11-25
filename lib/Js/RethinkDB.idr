@@ -63,7 +63,7 @@ toErrAsync : ASync (Either String x) -> ASync x
 toErrAsync x =
   x >>= xtoErr
   where
-    xtoErr (Left z) = error z
+    xtoErr (Left z) = debugError z
     xtoErr (Right z) = pure z
 
 export

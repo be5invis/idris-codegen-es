@@ -8,6 +8,8 @@ onchange' : (c -> b) -> InputAttribute  a b c
 onchange' f = onchange (\_,x=> f x)
 
 
+listOnDivIndex : List (Attribute a b) -> (a -> List c) -> Template (Nat, c) b -> Template a b
+listOnDivIndex attrs f t = listOnDiv attrs (\x => let l = f x in zip [0..length l] l) t
 
 private
 maybeConsIdx : Maybe a -> Fin 2
