@@ -43,7 +43,7 @@ bform {b} attrs (MkForm init tmpl) =
     (form
       (the ((MError b, Maybe (MError b)) -> FormEvent (MError b)) $ const Submit)
       []
-      (dyntext [] (errstr . fst) :: tmpl Value snd)
+      (text [] (errstr . Prelude.Basics.fst) :: tmpl Value snd)
     )
     (toFoldAttrs attrs)
   where

@@ -33,13 +33,6 @@ insertBeforeNode node new next = jscall "%0.insertBefore(%1,%2)" (Ptr -> Ptr -> 
 parentNode : Ptr -> JS_IO Ptr
 parentNode node = jscall "%0.parentNode" (Ptr -> JS_IO Ptr) node
 
-isUndefined : Ptr -> JS_IO Bool
-isUndefined x =
-  do
-    i <- jscall "(%0 == undefined)+0" (Ptr -> JS_IO Int) x
-    if i == 0 then pure False
-      else pure True
-
 docBody : JS_IO Ptr
 docBody = jscall "document.body" (() -> JS_IO Ptr) ()
 

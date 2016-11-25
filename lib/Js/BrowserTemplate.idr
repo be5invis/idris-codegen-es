@@ -74,16 +74,14 @@ data FoldAttribute : Type -> Type -> Type -> Type -> Type where
 export
 data Template : Type -> Type -> Type where
   CustomNode : String -> List (Attribute a b) -> List (Template a b) -> Template a b
-  TextNode : List (Attribute a b) -> String -> Template a b
-  DynTextNode : List (Attribute a b) ->
-                  (a -> String) -> Template a b
+  TextNode : List (Attribute a b) -> Gen a String -> Template a b
   InputNode : (t:InputType) -> List (InputAttribute a b (inputTypeTy t)) ->
                   Template a b
   FoldNode : s -> (s->i->(s,Maybe r)) -> Template s i -> List (FoldAttribute a b s r) -> Template a b
   FormNode : (a -> b) -> List (Attribute a b) -> List (Template a b) -> Template a b
   ListTemplateNode : String -> List (Attribute a b) -> (a -> List c) ->
                           Template c b -> Template a b
-  ImgNode : List (Attribute a b) -> String -> Template a b
+  ImgNode : List (Attribute a b) -> Gen a String -> Template a b
   ContraMapNode : (a -> b) -> Template b c -> Template a c
   EmptyNode : Template a b
   CaseNode : DecEq i => String -> List (Attribute a b) -> (f : i -> Type) ->  (a->DPair i f) ->
@@ -312,15 +310,16 @@ mutual
   initTemplate' n v getst proc (TextNode attrs str) =
     do
       newn <- appendNode n "span"
-      setText str newn
       attrUpds <- initAttributes v newn getst proc attrs
-      pure (removeDomNode newn, attrUpds)
-  initTemplate' n v getst proc (DynTextNode attrs getter) =
-    do
-      newn <- appendNode n "span"
-      setText (getter v) newn
-      attrsUpds <- initAttributes v newn getst proc attrs
-      pure (removeDomNode newn, MkUpdate getter (\x,y => if x ==y then pure () else setText y newn) :: attrsUpds)
+      case str of
+        GenConst z =>
+          do
+            setText z newn
+            pure (removeDomNode newn, attrUpds)
+        GenA getter =>
+          do
+            setText (getter v) newn
+            pure (removeDomNode newn, MkUpdate getter (\x,y => if x ==y then pure () else setText y newn) :: attrUpds)
   initTemplate' n v getst proc (InputNode IText attrs) =
     do
       i <- appendNode n "input"
@@ -354,12 +353,19 @@ mutual
       ctxU <- makeCtx upds
       pure (getCtx ctxU >>= removeListNodes >>= \_ => removeDomNode newn
            , (MkUpdate id (updateLT newn getst proc h t ctxU)) :: attrsUpds)
-  initTemplate' n v getst proc (ImgNode attrs x) =
+  initTemplate' n v getst proc (ImgNode attrs gen) =
     do
       nd <- appendNode n "img"
-      setAttribute nd ("src", x)
       attrsUpds <- initAttributes v nd getst proc attrs
-      pure (removeDomNode nd, attrsUpds)
+      case gen of
+        GenConst x =>
+          do
+            setAttribute nd ("src", x)
+            pure (removeDomNode nd, attrsUpds)
+        GenA g =>
+          do
+            setAttribute nd ("src", g v)
+            pure (removeDomNode nd, MkUpdate g (\x,y=> if x==y then pure () else setAttribute nd ("src", y)) :: attrsUpds)
   initTemplate' n v getst proc (ContraMapNode f t) =
     mapUpdates f <$> initTemplate' n (f v) (f <$> getst) proc t
   initTemplate' n v getst proc EmptyNode =
@@ -419,13 +425,8 @@ dynsetval : (a -> Maybe y) -> InputAttribute a f y
 dynsetval = DynSetVal
 
 export
-text : List (Attribute a f) -> String -> Template a f
-text = TextNode
-
-export
-dyntext : List (Attribute a f) -> (a -> String) ->
-              Template a f
-dyntext = DynTextNode
+text : IGen c a String => List (Attribute a f) -> c -> Template a f
+text attrs x = TextNode attrs (getGen x)
 
 export
 form : (a -> b) -> List (Attribute a b) -> List (Template a b) -> Template a b
@@ -440,8 +441,8 @@ listOnDiv : List (Attribute a b) -> (a -> List c) -> Template c b -> Template a 
 listOnDiv = ListTemplateNode "div"
 
 export
-img : List (Attribute a f) -> String -> Template a f
-img = ImgNode
+img : IGen c a String => List (Attribute a f) -> c -> Template a f
+img attrs x = ImgNode attrs (getGen x)
 
 export
 style : IGen s a (List Style) => s -> Attribute a f

@@ -19,6 +19,15 @@ jscall : (fname : String) -> (ty : Type) ->
 jscall fname ty = foreign FFI_JS fname ty
 
 export
+isUndefined : Ptr -> JS_IO Bool
+isUndefined x =
+  do
+    i <- jscall "(%0 == undefined)+0" (Ptr -> JS_IO Int) x
+    if i == 0 then pure False
+      else pure True
+
+
+export
 data Ctx : (b:Type) -> Type where
   MkCtx : Ptr -> Ctx a
 
