@@ -190,7 +190,6 @@ evalJSIO x =
 cgForeignRes :: (JsAST -> JsAST) -> FDesc -> JsAST -> JsAST
 cgForeignRes ret (FApp (UN "JS_IntT") _) x = ret x
 cgForeignRes ret (FCon (UN "JS_Unit")) x = ret x
-cgForeignRes ret (FCon (UN "C_Unit")) x = ret x
 cgForeignRes ret (FCon (UN "JS_Str")) x = ret x
 cgForeignRes ret (FCon (UN "JS_Ptr")) x = ret x
 cgForeignRes ret (FCon (UN "JS_Float")) x = ret x
