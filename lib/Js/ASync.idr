@@ -14,6 +14,10 @@ setASync onEvent (MkASync set) =
     pure ()
 
 export
+setASync_ : ASync a -> JS_IO ()
+setASync_ x = setASync (\_=>pure ()) x
+
+export
 total
 setTimeout : Int -> a -> ASync a
 setTimeout millis x =

@@ -7,7 +7,6 @@ modules = Js.ASync
         , Js.Browser
         , Js.BrowserForeigns
         , Js.BrowserDom
-        , Js.BrowserApp
 	, Js.TemplateStyle
 	, Js.BrowserTemplate
         , Js.Forms

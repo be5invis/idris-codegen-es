@@ -57,7 +57,7 @@ bform {b} attrs (MkForm init tmpl) =
 export
 textform : Form String
 textform =
-  MkForm (Left []) (\proce, procs => [textinput [onchange' (sch proce), dynsetval (sval procs)]])
+  MkForm (Left []) (\proce, procs => [textinput [onchange' (sch proce), setval (sval procs)]])
   where
     sval : (c -> Maybe (MError String)) -> c -> Maybe String
     sval p x =

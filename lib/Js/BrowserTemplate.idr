@@ -1,6 +1,6 @@
 module BrowserTemplate
 
-import Js.BrowserDom
+import public Js.BrowserDom
 import public Js.ASync
 
 
@@ -157,9 +157,6 @@ initAttributesInp : a -> DomNode -> JS_IO a -> (b -> JS_IO ()) ->
 initAttributesInp v n getst proc f j attrs =
   (catMaybes<$>) $ sequence $ map (initAttributeInp v n getst proc f j) attrs
 
-export
-data TemplateState : Type -> Type where
-  MkTemplateState : DomNode -> a -> Updates a -> TemplateState a
 
 procUpdate : a -> a -> Update a -> JS_IO ()
 procUpdate old new (MkUpdate r u) =
@@ -169,13 +166,13 @@ procUpdates : a -> a -> Updates a -> JS_IO ()
 procUpdates oz z upds = sequence_ $ map (procUpdate oz z) upds
 
 
-setState : Ctx (Updates b) -> Ctx b -> Maybe b -> Maybe b -> JS_IO ()
+setState : JSIORef (Updates b) -> JSIORef b -> Maybe b -> Maybe b -> JS_IO ()
 setState _ _ _ Nothing = pure ()
 setState ctxU ctxS _ (Just z) =
   do
-    oz <- getCtx ctxS
-    setCtx ctxS z
-    upds <- getCtx ctxU
+    oz <- readJSIORef ctxS
+    writeJSIORef ctxS z
+    upds <- readJSIORef ctxU
     procUpdates oz z upds
 
 procOnEvent : JS_IO a -> (b -> JS_IO ()) -> r ->
@@ -189,22 +186,22 @@ procOnEvent geta proc z ((OnEvent h)::r) =
 procOnEvent geta proc z ((DynSetState h)::r) =
   procOnEvent geta proc z r
 
-calcFoldUpdatesList: Ctx (Updates s) -> Ctx s -> List (FoldAttribute a b s r) -> Updates a
+calcFoldUpdatesList: JSIORef (Updates s) -> JSIORef s -> List (FoldAttribute a b s r) -> Updates a
 calcFoldUpdatesList _ _ Nil = []
 calcFoldUpdatesList x y ((OnEvent _)::r) = calcFoldUpdatesList x y r
 calcFoldUpdatesList x y ((DynSetState h)::_) =
   [MkUpdate h (setState x y)]
 
 
-updateFold : Ctx (Updates s) -> Ctx s -> (s->i->(s,Maybe r)) ->
+updateFold : JSIORef (Updates s) -> JSIORef s -> (s->i->(s,Maybe r)) ->
               JS_IO a -> List (FoldAttribute a b s r) -> (b -> JS_IO ()) ->
                 i -> JS_IO ()
 updateFold ctxU ctxS updfn geta attrs proc e =
   do
-    st <- getCtx ctxS
+    st <- readJSIORef ctxS
     let (newst, mr) = updfn st e
-    setCtx ctxS newst
-    upds <- getCtx ctxU
+    writeJSIORef ctxS newst
+    upds <- readJSIORef ctxU
     procUpdates st newst upds
     case mr of
       Nothing => pure ()
@@ -235,13 +232,13 @@ mutual
 
   updateLT : DomNode -> JS_IO a ->
               (b -> JS_IO ()) -> (a -> List c) ->
-                  Template c b -> Ctx (List (Remove,Updates c)) ->
+                  Template c b -> JSIORef (List (Remove,Updates c)) ->
                     a -> a -> JS_IO ()
   updateLT nd getst proc h t ctx o n =
     do
-      upds <- getCtx ctx
+      upds <- readJSIORef ctx
       upds' <- updateListTemplate 0 nd getst proc h t (h o) (h n) upds
-      setCtx ctx upds'
+      writeJSIORef ctx upds'
 
   addListTemplateNodes : Nat -> DomNode -> JS_IO a ->
                             (b -> JS_IO ()) -> (a -> List c) ->
@@ -266,14 +263,14 @@ mutual
 
   updateCaseNode : DecEq i => DomNode -> (f : i -> Type) -> (a->DPair i f) -> JS_IO a ->
                                 (b -> JS_IO ()) -> ((x:i) -> Template (f x) b) ->
-                                  Ctx Remove -> Ctx (DPair i (Updates . f)) -> Update a
+                                  JSIORef Remove -> JSIORef (DPair i (Updates . f)) -> Update a
   updateCaseNode n f h getst proc templs ctxR ctxU =
     MkUpdate id upd
     where
       updEq : (x:i) -> f x -> f x -> JS_IO ()
       updEq x y y' =
         do
-          (x' ** upds) <- getCtx ctxU
+          (x' ** upds) <- readJSIORef ctxU
           case decEq x x' of
             Yes Refl => procUpdates y y' upds
 
@@ -290,11 +287,11 @@ mutual
           Yes Refl => updEq x z z'
           No _ =>
             do
-              r <- getCtx ctxR
+              r <- readJSIORef ctxR
               r
               (r', u) <- initTemplate' n z' (getTheSt x' (h <$> getst)) proc (templs x')
-              setCtx ctxR r'
-              setCtx ctxU (x' ** u)
+              writeJSIORef ctxR r'
+              writeJSIORef ctxU (x' ** u)
 
       upd : a -> a -> JS_IO ()
       upd x y = upd' (h x) (h y)
@@ -328,15 +325,15 @@ mutual
       pure (removeDomNode i, attrsUpds)
   initTemplate' n v getst proc (FoldNode {a} {b} {s} {i} {r} s0 fupd t attrs) =
     do
-      ctxS <- makeCtx s0
-      ctxU <- makeCtx []
+      ctxS <- newJSIORef s0
+      ctxU <- newJSIORef []
       (r, upds) <- initTemplate'
                 n
                 s0
-                (getCtx ctxS)
+                (readJSIORef ctxS)
                 (updateFold {a=a} {b=b} {s=s} {i=i} ctxU ctxS fupd getst attrs proc)
                 t
-      setCtx ctxU upds
+      writeJSIORef ctxU upds
       pure (r, calcFoldUpdatesList ctxU ctxS attrs)
   initTemplate' n v getst proc (FormNode submit attrs childs) =
     do
@@ -350,8 +347,8 @@ mutual
       newn <- appendNode n tag
       attrsUpds <- initAttributes v newn getst proc attrs
       upds <- addListTemplateNodes 0 newn getst proc h t (h v)
-      ctxU <- makeCtx upds
-      pure (getCtx ctxU >>= removeListNodes >>= \_ => removeDomNode newn
+      ctxU <- newJSIORef upds
+      pure (readJSIORef ctxU >>= removeListNodes >>= \_ => removeDomNode newn
            , (MkUpdate id (updateLT newn getst proc h t ctxU)) :: attrsUpds)
   initTemplate' n v getst proc (ImgNode attrs gen) =
     do
@@ -375,25 +372,55 @@ mutual
       newn <- appendNode n tag
       attrsUpds <- initAttributes v newn getst proc attrs
       let (i**x) = h v
-      ctxS <- makeCtx x
-      (r, upds) <- initTemplate' newn x (getCtx ctxS) proc (templs i)
-      ctxUpds <- makeCtx (i ** upds)
-      ctxR <- makeCtx r
-      pure ( (join $ getCtx ctxR) >>= \_=>removeDomNode newn
+      ctxS <- newJSIORef x
+      (r, upds) <- initTemplate' newn x (readJSIORef ctxS) proc (templs i)
+      ctxUpds <- newJSIORef (i ** upds)
+      ctxR <- newJSIORef r
+      pure ( (join $ readJSIORef ctxR) >>= \_=>removeDomNode newn
            , (updateCaseNode newn f h getst proc templs ctxR ctxUpds) :: attrsUpds)
 
 
+export
+data TemplateRef : Type -> Type -> Type where
+  MkTemplateRef : JSIORef (a, Either (List b) (b->JS_IO ())) -> Updates a -> TemplateRef a b
 
 export
-initTemplate : DomNode -> a -> JS_IO a -> (b -> JS_IO ()) -> Template a b -> JS_IO (TemplateState a)
-initTemplate n v getst proc t = pure $ MkTemplateState n v (snd !(initTemplate' n v getst proc t))
-
-export
-updateTemplate : a -> TemplateState a-> JS_IO (TemplateState a)
-updateTemplate x (MkTemplateState n oldx upds) =
+initTemplate : DomNode -> a -> Template a b -> JS_IO (TemplateRef a b)
+initTemplate n v t =
   do
-    procUpdates oldx x upds
-    pure (MkTemplateState n x upds)
+    ctx <- newJSIORef (v, Left [])
+    (r, upds) <- initTemplate' n v ( fst <$> readJSIORef ctx) (proc ctx) t
+    pure $ MkTemplateRef ctx upds
+  where
+    proc : JSIORef (a, Either (List b) (b->JS_IO ())) -> b -> JS_IO ()
+    proc c x =
+      case !(readJSIORef c) of
+        (z, Right f) =>
+          do
+            writeJSIORef c (z, Left [])
+            f x
+        (z, Left xs) =>
+          writeJSIORef c (z, Left $ x::xs)
+
+export
+updateTemplate : a -> TemplateRef a b -> JS_IO ()
+updateTemplate x' (MkTemplateRef c upds) =
+  do
+    (x, f) <- readJSIORef c
+    procUpdates x x' upds
+    writeJSIORef c (x', f)
+
+export
+getInput : TemplateRef a b -> ASync b
+getInput (MkTemplateRef c _) =
+  MkASync $ \proc =>
+    case !(readJSIORef c) of
+      (z, Left (x::xs)) =>
+        do
+          writeJSIORef c (z, Left xs)
+          proc x
+      (z, _) =>
+        writeJSIORef c (z, Right proc)
 
 
 ---------- Primitives -------------
@@ -421,8 +448,8 @@ onclick : (a -> b) -> Attribute a b
 onclick = EventClick
 
 export
-dynsetval : (a -> Maybe y) -> InputAttribute a f y
-dynsetval = DynSetVal
+setval : (a -> Maybe y) -> InputAttribute a f y
+setval = DynSetVal
 
 export
 text : IGen c a String => List (Attribute a f) -> c -> Template a f

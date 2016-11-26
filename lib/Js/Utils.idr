@@ -32,20 +32,20 @@ isUndefined x =
 
 
 export
-data Ctx : (b:Type) -> Type where
-  MkCtx : Ptr -> Ctx a
+data JSIORef : (b:Type) -> Type where
+  MkJSIORef : Ptr -> JSIORef a
 
 export
-makeCtx : a -> JS_IO (Ctx a)
-makeCtx x = MkCtx <$> jscall "{val: %0}" (Ptr -> JS_IO Ptr) (believe_me x)
+newJSIORef : a -> JS_IO (JSIORef a)
+newJSIORef x = MkJSIORef <$> jscall "{val: %0}" (Ptr -> JS_IO Ptr) (believe_me x)
 
 export
-setCtx : Ctx a -> a -> JS_IO ()
-setCtx (MkCtx ctx) z = jscall "%0.val = %1" (Ptr -> Ptr -> JS_IO ()) ctx (believe_me z)
+writeJSIORef : JSIORef a -> a -> JS_IO ()
+writeJSIORef (MkJSIORef ctx) z = jscall "%0.val = %1" (Ptr -> Ptr -> JS_IO ()) ctx (believe_me z)
 
 export
-getCtx : Ctx a -> JS_IO a
-getCtx (MkCtx ctx) = believe_me <$> jscall "%0.val" ( Ptr -> JS_IO Ptr) ctx
+readJSIORef : JSIORef a -> JS_IO a
+readJSIORef (MkJSIORef ctx) = believe_me <$> jscall "%0.val" ( Ptr -> JS_IO Ptr) ctx
 
 
 export

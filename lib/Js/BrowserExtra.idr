@@ -1,6 +1,6 @@
 module Js.BrowserExtra
 
-import Js.BrowserApp
+import Js.BrowserTemplate
 
 %access export
 
@@ -34,4 +34,3 @@ maybeTemplateSpan {a} {b} attrs tNothing tJust =
     templs : (x: Fin 2) -> Template (f x) b
     templs FZ = tNothing
     templs (FS FZ) = tJust
-    --templs = [tNothing, tJust]
