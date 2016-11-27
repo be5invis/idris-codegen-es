@@ -73,7 +73,7 @@ data FoldAttribute : Type -> Type -> Type -> Type -> Type where
 
 export
 data Template : Type -> Type -> Type where
-  CustomNode : String -> List (Attribute a b) -> List (Template a b) -> Template a b
+  CustomNode : (DomNode -> JS_IO ()) -> String -> List (Attribute a b) -> List (Template a b) -> Template a b
   TextNode : List (Attribute a b) -> Gen a String -> Template a b
   InputNode : (t:InputType) -> List (InputAttribute a b (inputTypeTy t)) ->
                   Template a b
@@ -228,6 +228,7 @@ mutual
     do
       removeListNodes us
       pure []
+  updateListTemplate pos nd getst proc h t _ _ _ = pure []
 
 
   updateLT : DomNode -> JS_IO a ->
@@ -246,14 +247,15 @@ mutual
   addListTemplateNodes {a} {c} pos nd getst proc h t [] = pure []
   addListTemplateNodes {a} {c} pos nd getst proc h t (x::xs) =
     do
-      us <- initTemplate' nd x (getstAux <$> getst) proc t
+      us <- initTemplate' nd x (getstAux x <$> getst) proc t
       us' <- addListTemplateNodes (S pos) nd getst proc h t xs
       pure $ us :: us'
     where
-      getstAux : a -> c
-      getstAux x =
+      getstAux : c -> a -> c
+      getstAux z x =
         case index' pos $ h x of
           Just y => y
+          Nothing => z
 
   initChilds : DomNode -> a -> JS_IO a -> (b -> JS_IO ()) -> List (Template a b) -> JS_IO (Remove, Updates a)
   initChilds n v getst proc childs =
@@ -273,13 +275,15 @@ mutual
           (x' ** upds) <- readJSIORef ctxU
           case decEq x x' of
             Yes Refl => procUpdates y y' upds
+            No _ => pure ()
 
-      getTheSt : (x:i) -> JS_IO (DPair i f) -> JS_IO (f x)
-      getTheSt x get =
+      getTheSt : (x:i) -> (f x) -> JS_IO (DPair i f) -> JS_IO (f x)
+      getTheSt x z get =
         do
           (x' ** z') <- get
           case decEq x x' of
             Yes Refl => pure z'
+            No _ => pure z
 
       upd' : DPair i f -> DPair i f -> JS_IO ()
       upd' (x ** z) (x' ** z') =
@@ -289,7 +293,7 @@ mutual
             do
               r <- readJSIORef ctxR
               r
-              (r', u) <- initTemplate' n z' (getTheSt x' (h <$> getst)) proc (templs x')
+              (r', u) <- initTemplate' n z' (getTheSt x' z' (h <$> getst)) proc (templs x')
               writeJSIORef ctxR r'
               writeJSIORef ctxU (x' ** u)
 
@@ -298,11 +302,12 @@ mutual
 
 
   initTemplate' : DomNode -> a -> JS_IO a -> (b -> JS_IO ()) -> Template a b -> JS_IO (Remove, Updates a)
-  initTemplate' n v getst proc (CustomNode tag attrs childs) =
+  initTemplate' n v getst proc (CustomNode postProc tag attrs childs) =
     do
       newn <- appendNode n tag
       attrsUpds <- initAttributes v newn getst proc attrs
       (cr, childsUpds) <- initChilds newn v getst proc childs
+      postProc newn
       pure (cr >>= \_ => removeDomNode newn, attrsUpds ++ childsUpds)
   initTemplate' n v getst proc (TextNode attrs str) =
     do
@@ -403,16 +408,26 @@ initTemplate n v t =
           writeJSIORef c (z, Left $ x::xs)
 
 export
-updateTemplate : a -> TemplateRef a b -> JS_IO ()
-updateTemplate x' (MkTemplateRef c upds) =
+refreshTemplate : a -> TemplateRef a b -> JS_IO ()
+refreshTemplate x' (MkTemplateRef c upds) =
   do
     (x, f) <- readJSIORef c
     procUpdates x x' upds
     writeJSIORef c (x', f)
 
 export
-getInput : TemplateRef a b -> ASync b
-getInput (MkTemplateRef c _) =
+readTemplate : TemplateRef a b -> JS_IO a
+readTemplate (MkTemplateRef c _) = fst <$> readJSIORef c
+
+
+export
+updateTemplate : (a -> a) -> TemplateRef a b -> JS_IO ()
+updateTemplate f t = refreshTemplate (f !(readTemplate t)) t
+
+
+export
+getInputTemplate : TemplateRef a b -> ASync b
+getInputTemplate (MkTemplateRef c _) =
   MkASync $ \proc =>
     case !(readJSIORef c) of
       (z, Left (x::xs)) =>
@@ -424,14 +439,6 @@ getInput (MkTemplateRef c _) =
 
 
 ---------- Primitives -------------
-export
-span : List (Attribute a f) -> List (Template a f) -> Template a f
-span = CustomNode "span"
-
-export
-div : List (Attribute a f) -> List (Template a f) -> Template a f
-div = CustomNode "div"
-
 export
 textinput : List (InputAttribute a f String) ->
               Template a f
@@ -477,7 +484,11 @@ style x = StrAttribute "style" (map styleStr $ getGen x)
 
 export
 customNode : String -> List (Attribute a f) -> List (Template a f) -> Template a f
-customNode = CustomNode
+customNode = CustomNode (\_=>pure ())
+
+export
+customNodeWidthPostProc : (DomNode -> JS_IO ()) -> String -> List (Attribute a f) -> List (Template a f) -> Template a f
+customNodeWidthPostProc = CustomNode
 
 infixl 4 >$<
 

@@ -1,6 +1,6 @@
 package js
 
-pkgs = contrib, lightyear, pruviloj
+pkgs = contrib, lightyear, effects, pruviloj
 
 modules = Js.ASync
 	, Js.Utils

@@ -107,7 +107,7 @@ makeSceneOption (Navigation NavigationNone) =
 export
 x3dom : List (Attribute a f) -> List (SceneOption a) -> List (Element a f) -> Template a f
 x3dom attrs options childs =
-  customNode "x3d" attrs
+  customNodeWidthPostProc (\_=> jscall "x3dom.reload()" (() -> JS_IO()) ()) "x3d" attrs
     [customNode "scene" []
        (map makeSceneOption options ++ map x3domToTempl childs)
     ]
