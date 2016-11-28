@@ -386,16 +386,16 @@ mutual
 
 
 export
-data TemplateRef : Type -> Type -> Type where
-  MkTemplateRef : JSIORef (a, Either (List b) (b->JS_IO ())) -> Updates a -> TemplateRef a b
+data GuiRef : Type -> Type -> Type where
+  MkGuiRef : JSIORef (a, Either (List b) (b->JS_IO ())) -> Updates a -> GuiRef a b
 
 export
-initTemplate : DomNode -> a -> Template a b -> JS_IO (TemplateRef a b)
+initTemplate : DomNode -> a -> Template a b -> JS_IO (GuiRef a b)
 initTemplate n v t =
   do
     ctx <- newJSIORef (v, Left [])
     (r, upds) <- initTemplate' n v ( fst <$> readJSIORef ctx) (proc ctx) t
-    pure $ MkTemplateRef ctx upds
+    pure $ MkGuiRef ctx upds
   where
     proc : JSIORef (a, Either (List b) (b->JS_IO ())) -> b -> JS_IO ()
     proc c x =
@@ -408,26 +408,26 @@ initTemplate n v t =
           writeJSIORef c (z, Left $ x::xs)
 
 export
-refreshTemplate : a -> TemplateRef a b -> JS_IO ()
-refreshTemplate x' (MkTemplateRef c upds) =
+refreshTemplate : a -> GuiRef a b -> JS_IO ()
+refreshTemplate x' (MkGuiRef c upds) =
   do
     (x, f) <- readJSIORef c
     procUpdates x x' upds
     writeJSIORef c (x', f)
 
 export
-readTemplate : TemplateRef a b -> JS_IO a
-readTemplate (MkTemplateRef c _) = fst <$> readJSIORef c
+readTemplate : GuiRef a b -> JS_IO a
+readTemplate (MkGuiRef c _) = fst <$> readJSIORef c
 
 
 export
-updateTemplate : (a -> a) -> TemplateRef a b -> JS_IO ()
+updateTemplate : (a -> a) -> GuiRef a b -> JS_IO ()
 updateTemplate f t = refreshTemplate (f !(readTemplate t)) t
 
 
 export
-getInputTemplate : TemplateRef a b -> ASync b
-getInputTemplate (MkTemplateRef c _) =
+getInputTemplate : GuiRef a b -> ASync b
+getInputTemplate (MkGuiRef c _) =
   MkASync $ \proc =>
     case !(readJSIORef c) of
       (z, Left (x::xs)) =>

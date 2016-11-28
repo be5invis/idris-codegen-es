@@ -3,20 +3,21 @@ module Main
 import Js.Browser
 import Js.Forms
 
-upd : String -> String -> AppM String String
-upd x y = pure y
+vw : Template String String
+vw = div [] [textinput [onchange' id], text [] id]
 
-vw : STemplate String String
---vw = div [] [bform [sonchange id] textform, dyntext [] id]
-vw = div [] [textinput [sonchange id, dynsetval (const $ Just "ola")], dyntext [] id]
+pageLoop : Eff () [HTML (GuiRef String String)]
+pageLoop =
+  do
+    x <- getInput
+    update (const x)
+    pageLoop
 
-page : SimpleApp String String
-page = mkSimpleApp
-          (pure "")
-          vw
-          upd
-
+page : Eff () [HTML ()] [HTML (GuiRef String String)]
+page =
+  do
+    initBody "" vw
+    pageLoop
 
 main : JS_IO ()
-main = do
-  runApp page
+main = setASync_ $ run page

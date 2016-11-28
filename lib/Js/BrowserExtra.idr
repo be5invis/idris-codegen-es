@@ -3,16 +3,15 @@ module Js.BrowserExtra
 import Js.BrowserTemplate
 import public Effects
 
-%access export
-
-data Html : Effect where
-  InitBody : a -> Template a b -> sig Html () () (TemplateRef a b)
-  Update : (a->a) -> sig Html () (TemplateRef a b) (TemplateRef a b)
-  GetInput : sig Html b (TemplateRef a b) (TemplateRef a b)
-
 export
-HTML : (ty1 : Type) -> (ty2 : Type) -> EFFECT
-HTML t1 t2 = MkEff (t1, t2) Html
+data Html : Effect where
+  InitBody : a -> Template a b -> sig Html () () (GuiRef a b)
+  Update : (a->a) -> sig Html () (GuiRef a b)
+  GetInput : sig Html b (GuiRef a b)
+
+public export
+HTML : (ty : Type) -> EFFECT
+HTML t = MkEff t Html
 
 export
 implementation Handler Html ASync where
@@ -20,6 +19,19 @@ implementation Handler Html ASync where
   handle r (Update f) k = do liftJS_IO $ updateTemplate f r; k () r
   handle r GetInput k = do y <- getInputTemplate r; k y r
 
+export
+initBody : a -> Template a b -> Eff () [HTML ()] [HTML (GuiRef a b)]
+initBody x t = call $ InitBody x t
+
+export
+update : (a -> a) -> Eff () [HTML (GuiRef a b)]
+update f = call $ Update f
+
+export
+getInput : Eff b [HTML (GuiRef a b)]
+getInput = call GetInput
+
+export
 onchange' : (c -> b) -> InputAttribute  a b c
 onchange' f = onchange (\_,x=> f x)
 
@@ -31,21 +43,23 @@ export
 div : List (Attribute a f) -> List (Template a f) -> Template a f
 div = customNode "div"
 
+export
+button : IGen c a String => List (Attribute a f) -> c -> Template a f
+button attrs x = customNode "button" attrs [text [] x]
 
+export
 listOnDivIndex : List (Attribute a b) -> (a -> List c) -> Template (Nat, c) b -> Template a b
 listOnDivIndex attrs f t = listOnDiv attrs (\x => let l = f x in zip [0..length l] l) t
 
-private
 maybeConsIdx : Maybe a -> Fin 2
 maybeConsIdx Nothing = 0
 maybeConsIdx (Just _) = 1
 
-private
 maybeConsIdxType : Type -> Fin 2 -> Type
 maybeConsIdxType a FZ = ()
 maybeConsIdxType a (FS FZ) = a
 
-
+export
 maybeTemplateSpan : List (Attribute (Maybe a) b) -> Template () b -> Template a b -> Template (Maybe a) b
 maybeTemplateSpan {a} {b} attrs tNothing tJust =
   caseTemplateSpan attrs f m2dp templs
