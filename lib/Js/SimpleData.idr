@@ -173,7 +173,7 @@ decodeJS (SList x) p =
         if len >0 then
           do
             pfirst <- jscall "%0[0]" (Ptr -> JS_IO Ptr) p
-            prest <- jscall "%0.splice(1)" (Ptr -> JS_IO Ptr) p
+            prest <- jscall "%0.slice(1)" (Ptr -> JS_IO Ptr) p
             first <- decodeJS x pfirst
             rest <- decodeJS (SList x) prest
             pure $ (::) <$> first <*> rest
