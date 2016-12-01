@@ -15,7 +15,7 @@ HTML t = MkEff t Html
 
 export
 implementation Handler Html ASync where
-  handle r (InitBody x t) k = do  b <- liftJS_IO body; r' <- liftJS_IO $ initTemplate b x t; k () r'
+  handle () (InitBody x t) k = do  b <- liftJS_IO body; r' <- liftJS_IO $ initTemplate b x t; k () r'
   handle r (Update f) k = do liftJS_IO $ updateTemplate f r; k () r
   handle r GetInput k = do y <- getInputTemplate r; k y r
 

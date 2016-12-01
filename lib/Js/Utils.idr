@@ -78,3 +78,17 @@ shuffle x =
     shuffle' {n = (S k)} xs ys =
       let pos = !randomFin
       in shuffle' (deleteAt pos xs) (index pos xs :: ys)
+
+export
+readList : Ptr -> JS_IO (List Ptr)
+readList x =
+  do
+    len <- jscall "%0.length" (Ptr -> JS_IO Int) x
+    if len > 0 then
+      do
+        pfirst <- jscall "%0[0]" (Ptr -> JS_IO Ptr) x
+        prest <- jscall "%0.slice(1)" (Ptr -> JS_IO Ptr) x
+        rest <- readList prest
+        pure $ pfirst :: rest
+      else
+          pure []
