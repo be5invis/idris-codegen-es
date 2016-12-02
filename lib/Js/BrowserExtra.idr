@@ -32,19 +32,22 @@ getInput : Eff b [HTML (GuiRef a b)]
 getInput = call GetInput
 
 export
-onchange' : (c -> b) -> InputAttribute  a b c
+onchange' : (c -> b) -> InputAttribute a b c
 onchange' f = onchange (\_,x=> f x)
 
+onclick' : b -> Attribute a b
+onclick' x = onclick $ const x
+
 export
-span : List (Attribute a f) -> List (Template a f) -> Template a f
+span : List (Attribute a b) -> List (Template a b) -> Template a b
 span = customNode "span"
 
 export
-div : List (Attribute a f) -> List (Template a f) -> Template a f
+div : List (Attribute a b) -> List (Template a b) -> Template a b
 div = customNode "div"
 
 export
-button : IGen c a String => List (Attribute a f) -> c -> Template a f
+button : IGen c a String => List (Attribute a b) -> c -> Template a b
 button attrs x = customNode "button" attrs [text [] x]
 
 export
