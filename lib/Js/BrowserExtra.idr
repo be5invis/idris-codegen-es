@@ -35,6 +35,7 @@ export
 onchange' : (c -> b) -> InputAttribute a b c
 onchange' f = onchange (\_,x=> f x)
 
+export
 onclick' : b -> Attribute a b
 onclick' x = onclick $ const x
 
