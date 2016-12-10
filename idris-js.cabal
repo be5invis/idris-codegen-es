@@ -20,7 +20,7 @@ Executable idris-codegen-js
   Main-is:        Main.hs
   hs-source-dirs: src
 
-  Build-depends:  idris >= 0.12.2
+  Build-depends:  idris >= 0.99
                 , base
                 , containers
                 , directory

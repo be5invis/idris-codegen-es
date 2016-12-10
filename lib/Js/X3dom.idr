@@ -27,16 +27,18 @@ export
   getGen (x,y,z) = GenConst (toDouble x, toDouble y, toDouble z)
 
 export
-data Transform a = MkTransform (Gen a Point3) (Gen a Point3)
+data Transform : (a:Type) -> (a->Type) -> Type where
+  MkTransform : (Gen (DPair a f) Point3) -> (Gen (DPair a f) Point3) -> Transform a f
 
 export
 data NavigationType = NavigationNone
 
 export
-data SceneOption a = ViewPoint Point3 Point3 Double
-                   | Navigation NavigationType
+data SceneOption : (a:Type) -> (a->Type) -> Type where
+  ViewPoint : Point3 -> Point3 -> Double -> SceneOption a f
+  Navigation : NavigationType -> SceneOption a f
 
-foldTransforms : List (Transform a) -> Transform a
+foldTransforms : List (Transform a f) -> Transform a f
 foldTransforms x =
   foldl
     reduce
@@ -49,12 +51,12 @@ foldTransforms x =
         ((\(x,y,z),(x',y',z') => (x*x',y*y',z*z')) <$> s <*> s')
 
 export
-data Element : Type -> Type -> Type where
-  Sphere : Appearance -> Element a b
-  Box : Appearance -> Element a b
-  TransformElem : List (Transform a) -> List (Element a b) -> Element a b
+data Element : (a:Type) -> (a->Type) -> (a->Type) -> Type where
+  Sphere : Appearance -> Element a f g
+  Box : Appearance -> Element a f g
+  TransformElem : List (Transform a f) -> List (Element a f g) -> Element a f g
 
-appearanceToTemplate : Appearance -> Template a f
+appearanceToTemplate : Appearance -> Template a f g
 appearanceToTemplate (DiffuseRGB r g b) =
   customNode "appearance"
     []
@@ -66,19 +68,19 @@ integerToString = show
 point3ToString : Point3 -> String
 point3ToString (x,y,z) = show x ++ " " ++ show y ++ " " ++ show z
 
-width : IGen w a Integer => w -> Attribute a f
+width : IGen w (DPair a f) Integer => w -> Attribute a f g
 width x = StrAttribute "width" (map integerToString $ getGen x)
 
-height : IGen h a Integer => h -> Attribute a f
+height : IGen h (DPair a f) Integer => h -> Attribute a f g
 height h = StrAttribute "height" (map integerToString $ getGen h)
 
-transformToAttr : Transform a -> List (Attribute a f)
+transformToAttr : Transform a f -> List (Attribute a f g)
 transformToAttr (MkTransform t s) =
   [ StrAttribute "translation" (point3ToString <$> t)
   , StrAttribute "scale" (point3ToString <$> s)
   ]
 
-x3domToTempl : Element a f -> Template a f
+x3domToTempl : Element a f g -> Template a f g
 x3domToTempl (Sphere ap) =
   customNode "shape"
     []
@@ -92,7 +94,7 @@ x3domToTempl (TransformElem transfs chlds) =
     (transformToAttr $ foldTransforms transfs)
     (map x3domToTempl chlds)
 
-makeSceneOption : SceneOption a -> Template a f
+makeSceneOption : SceneOption a f -> Template a f g
 makeSceneOption (ViewPoint pos vect angl) =
   customNode "ViewPoint"
     [ StrAttribute "position" (pure $ point3ToString pos)
@@ -105,7 +107,7 @@ makeSceneOption (Navigation NavigationNone) =
     []
 
 export
-x3dom : List (Attribute a f) -> List (SceneOption a) -> List (Element a f) -> Template a f
+x3dom : List (Attribute a f g) -> List (SceneOption a f) -> List (Element a f g) -> Template a f g
 x3dom attrs options childs =
   customNodeWidthPostProc (\_=> jscall "x3dom.reload()" (() -> JS_IO()) ()) "x3d" attrs
     [customNode "scene" []
@@ -115,23 +117,23 @@ x3dom attrs options childs =
 --------------------------------------------------------------------------------
 
 export
-sphere : Appearance -> Element a f
+sphere : Appearance -> Element a f g
 sphere = Sphere
 
 export
-box : Appearance -> Element a f
+box : Appearance -> Element a f g
 box = Box
 
 export
-translation : IGen t a Point3 => t -> Transform a
+translation : IGen t (DPair a f) Point3 => t -> Transform a f
 translation x = MkTransform (getGen x) (pure (1,1,1))
 
 export
-scale : IGen s a Point3 => s -> Transform a
+scale : IGen s (DPair a f) Point3 => s -> Transform a f
 scale x = MkTransform (pure (0,0,0)) (getGen x)
 
 export
-transform : List (Transform a) -> List (Element a f) -> Element a f
+transform : List (Transform a f) -> List (Element a f g) -> Element a f g
 transform x y = TransformElem x y
 
 
@@ -140,5 +142,5 @@ rgb : Double -> Double -> Double -> Appearance
 rgb = DiffuseRGB
 
 export
-viewPoint : Point3 -> Point3 -> Double -> SceneOption a
+viewPoint : Point3 -> Point3 -> Double -> SceneOption a f
 viewPoint = ViewPoint

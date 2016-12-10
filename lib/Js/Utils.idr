@@ -47,6 +47,12 @@ export
 readJSIORef : JSIORef a -> JS_IO a
 readJSIORef (MkJSIORef ctx) = believe_me <$> jscall "%0.val" ( Ptr -> JS_IO Ptr) ctx
 
+export
+modifyJSIORef : JSIORef a -> (a->a) -> JS_IO ()
+modifyJSIORef ref f =
+  do
+    v <- readJSIORef ref
+    writeJSIORef ref (f v)
 
 export
 random : JS_IO Double

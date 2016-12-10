@@ -7,10 +7,10 @@ modules = Js.ASync
         , Js.Browser
         , Js.BrowserForeigns
         , Js.BrowserDom
-	, Js.TemplateStyle
-	, Js.BrowserTemplate
+	, Js.HtmlStyle
+	, Js.HtmlTemplate
         , Js.Forms
-        , Js.BrowserExtra
+        , Js.HtmlUtils
         , Js.BrowserNetwork
 	, Js.SVG
 	, Js.X3dom

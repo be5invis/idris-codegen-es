@@ -1,6 +1,6 @@
-module TemplateStyle
+module HtmlStyle
 
-import Js.BrowserTemplate
+import Js.HtmlTemplate
 import Data.Fin
 
 %access export

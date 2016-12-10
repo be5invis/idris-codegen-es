@@ -2,18 +2,32 @@ module Main
 
 import Js.Browser
 import Js.Forms
+import Effects
+import Effect.State
 
-vw : Template String String
-vw = div [] [textinput [onchange' id], text [] id]
+data Input = Set
+          |  Change String
 
-pageLoop : Eff () [HTML (GuiRef String String)]
+Gui : Type
+Gui = GuiRef String Input
+
+vw : Template String Input
+vw = div [] [form' Set [] [textinput [onchange' Change]], text [] id]
+
+pageLoop : Eff () [HTML Gui, STATE String]
 pageLoop =
   do
     x <- getInput
-    update (const x)
+    case x of
+      Set =>
+        do
+          s <- get
+          putGui s
+      Change s =>
+        put s
     pageLoop
 
-page : Eff () [HTML ()] [HTML (GuiRef String String)]
+page : Eff () [HTML (), STATE String] [HTML Gui, STATE String]
 page =
   do
     initBody "" vw

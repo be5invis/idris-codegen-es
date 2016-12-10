@@ -2,6 +2,7 @@ module SVG
 
 import Js.Browser
 
+{-
 export
 data SVG : Type -> Type -> Type where
   ImageSvg : Gen a Int -> Gen a Int -> Gen a Nat -> Gen a Nat -> Gen a String -> SVG a b
@@ -29,3 +30,4 @@ svg w h l = customNode "svg" [width w, height h] (map svg2templ l)
 export
 image : Gen a Int -> Gen a Int -> Gen a Nat -> Gen a Nat -> Gen a String -> SVG a f
 image = ImageSvg
+-}

@@ -2,6 +2,8 @@ module Js.Forms
 
 import Js.Browser
 
+{-
+
 public export
 TyError : Type
 TyError = List String
@@ -67,3 +69,4 @@ textform =
         Just (Right x) => Just x
     sch : (MError String -> b) -> String -> b
     sch h x = h (Right x)
+-}
