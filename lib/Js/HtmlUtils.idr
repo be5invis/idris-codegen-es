@@ -1,6 +1,7 @@
 module Js.HtmlUtils
 
 import Js.HtmlTemplate
+import Data.Vect
 
 namespace Dependent
   public export
@@ -26,16 +27,35 @@ namespace Dependent
   listOnDivIndex attrs fn t = listOnDiv attrs (\x,y => let l = fn x y in zip [0..length l] l) t
 
   export
+  vectOnDivIndex : {h:a->Type} -> List (Attribute a f g) -> (len : a->Nat) -> ((x:a) -> f x -> Vect (len x) (h x)) ->
+                     BTemplate a (\x=>(Fin (len x), h x)) g -> BTemplate a f g
+  vectOnDivIndex attrs len fn t = listOnDiv attrs (\x,y => let l = fn x y in toList $ zip range l) t
+
+  export
   onclick : ((x:a) -> f x -> g x) -> Attribute a f g
   onclick = EventClick
 
   export
-  onchange : ((x:a) -> c -> f x -> g x) -> InputAttribute a f g c
+  onchange : ((x:a) -> f x -> c x -> g x) -> InputAttribute a f g c
   onchange = OnChange
 
   export
   form : ((x:a) -> f x -> g x) -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
   form = FormNode
+
+  infixl 4 >$<, <$>
+
+  export
+  (>$<) : ((x:a) -> h x -> f x) -> Template a f g -> Template a h g
+  (>$<) a b = CMapNode a b
+
+  export
+  (<$>) : ((x:a) -> h x -> g x) -> Template a f h -> Template a f g
+  (<$>) a b = MapNode a b
+
+  export
+  setVal : ((x:a) -> f x -> Maybe (c x)) -> InputAttribute a f g c
+  setVal = SetVal
 
 namespace Simple
   public export
@@ -71,12 +91,9 @@ namespace Simple
   onclick' x = onclick (const x)
 
   export
-  onchange : {t:Type} -> (c -> b -> d) -> InputAttribute t (const b) (const d) c
+  onchange : {t:Type} -> (b -> c -> d) -> InputAttribute t (const b) (const d) (const c)
   onchange fn = OnChange (\_,x,y=> fn x y)
 
-  export
-  onchange' : {t:Type} -> (c -> d) -> InputAttribute t (const b) (const d) c
-  onchange' fn = OnChange (\_,x,_=> fn x)
 
   export
   form : {t:Type} -> (b -> c) -> List (Attribute t (const b) (const c)) ->
@@ -88,9 +105,22 @@ namespace Simple
             List (BTemplate t (const b) (const c)) -> BTemplate t (const b) (const c)
   form' x = FormNode (\_,_=>x)
 
+  export
+  foldTemplate : ((x:a) -> s x) -> ((x:a) -> s x -> i x -> (s x, Maybe (r x))) -> ((x:a) -> (y:a) -> s x -> s y) ->
+               BTemplate a s i -> List (FoldAttribute a f g s r) -> BTemplate a f g
+  foldTemplate = FoldNode
+
+  export
+  setVal : {t:Type} -> (b -> Maybe c) -> InputAttribute t (const b) (const d) (const c)
+  setVal fn = SetVal (\_,z=> fn z)
+
+  export
+  onchange' : {t:Type} -> (c -> d) -> InputAttribute t (const b) (const d) (const c)
+  onchange' fn = OnChange (\_,_,x=> fn x)
+
 
 export
-textinput : List (InputAttribute a f g String) ->
+textinput : List (InputAttribute a f g (const String)) ->
                 BTemplate a f g
 textinput = InputNode IText
 

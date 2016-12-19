@@ -57,8 +57,8 @@ public export
 data InputType = IText
 
 public export
-inputTypeTy : InputType -> Type
-inputTypeTy IText = String
+InputTypeTy : InputType -> (a -> Type)
+InputTypeTy IText = const String
 
 public export
 data Attribute : (a:Type) -> (a->Type) -> (a->Type) -> Type where
@@ -66,24 +66,24 @@ data Attribute : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   StrAttribute : String -> Gen (DPair a f) String -> Attribute a f g
 
 public export
-data InputAttribute : (a:Type) -> (a->Type) -> (a->Type) -> Type -> Type where
+data InputAttribute : (a:Type) -> (a->Type) -> (a->Type) -> (a-> Type) -> Type where
   GenAttr : Attribute a f g -> InputAttribute a f g c
-  OnChange : ((x:a) -> c -> f x -> g x) -> InputAttribute a f g c
-  SetVal : ((x:a) -> f x -> Maybe c) -> InputAttribute a f g c
+  OnChange : ((x:a) -> f x -> c x -> g x) -> InputAttribute a f g c
+  SetVal : ((x:a) -> f x -> Maybe (c x)) -> InputAttribute a f g c
 
 public export
 data FoldAttribute : (a:Type) -> (a->Type) -> (a->Type) -> (a->Type) -> (a -> Type) -> Type where
-  OnEvent : DecEq a => ((x:a) -> f x -> r x -> g x) -> FoldAttribute a f g s r
-  SetState : DecEq a => ((x:a) -> f x -> Maybe (s x)) -> FoldAttribute a f g s r
+  OnEvent : ((x:a) -> f x -> r x -> g x) -> FoldAttribute a f g s r
+  SetState : ((x:a) -> f x -> Maybe (s x)) -> FoldAttribute a f g s r
 
 public export
 data BTemplate : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   CustomNode : (DomNode -> JS_IO ()) -> String -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
   TextNode : List (Attribute a f g) -> Gen (DPair a f) String -> BTemplate a f g
-  InputNode : (t:InputType) -> List (InputAttribute a f g (inputTypeTy t)) ->
+  InputNode : (t:InputType) -> List (InputAttribute a f g (InputTypeTy t)) ->
                   BTemplate a f g
---  FoldNode : DPair a f -> ((x:a) -> s x -> i x -> (s x, Maybe (r x))) -> ((x:a) -> (y:a) -> s x -> s y) ->
---              BTemplate a s i -> List (FoldAttribute a f g s r) -> BTemplate a f g
+  FoldNode : ((x:a) -> s x) -> ((x:a) -> s x -> i x -> (s x, Maybe (r x))) -> ((x:a) -> (y:a) -> s x -> s y) ->
+               BTemplate a s i -> List (FoldAttribute a f g s r) -> BTemplate a f g
   FormNode : ((x:a) -> f x -> g x) -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
   ListNode : String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
                           BTemplate a h g -> BTemplate a f g
@@ -91,6 +91,8 @@ data BTemplate : (a:Type) -> (a->Type) -> (a->Type) -> Type where
 --  ContraMapNode : (a -> b) -> BTemplate b (const c) -> BTemplate a (const c)
   EmptyNode : BTemplate a f g
   MaybeNode : String -> List (Attribute a f g) -> ((x:a)-> f x -> Maybe (h x)) -> BTemplate a h g -> BTemplate a f g
+  MapNode : ((x:a) -> g x -> h x) -> BTemplate a f g -> BTemplate a f h
+  CMapNode : ((x:a) -> h x -> f x) -> BTemplate a f g -> BTemplate a h g
 --  CaseNode : DecEq i => String -> List (Attribute a (const b)) -> (f : i -> Type) ->  (a->DPair i f) ->
 --                          ((x:i) -> BTemplate (f x) (const b)) -> BTemplate a (const b)
 
@@ -109,12 +111,12 @@ Updates a = List (Update a)
 mapUpdates : (a->b) -> (Remove, Updates b) -> (Remove, Updates a)
 mapUpdates f (r,upds) = (r, map (\(MkUpdate g h)=>MkUpdate (g . f) h) upds)
 
-procChange : {g:a->Type} -> GuiCallback a f g ->
-                  (String -> c) -> ((x:a) -> c -> f x -> g x) -> String -> JS_IO ()
+procChange : {g:a->Type} -> {c:a->Type} -> GuiCallback a f g ->
+                  ((x:a) -> String -> c x) -> ((x:a) -> f x -> c x -> g x) -> String -> JS_IO ()
 procChange gcb j h str =
   do
     (x**(y,pr)) <- gcb
-    pr (h x (j str) y)
+    pr (h x y (j x str))
 
 procClick : {g:a->Type} -> GuiCallback a f g -> ((x:a) -> f x -> g x) -> () -> JS_IO ()
 procClick gcb h () =
@@ -150,7 +152,7 @@ procSetVal n (Just z) =
   setValue z n
 
 initAttributeInp : DPair a f -> DomNode -> GuiCallback a f g ->
-                      (String -> c) -> (c -> String) -> InputAttribute a f g c -> JS_IO (Maybe (Update (DPair a f)))
+                      ((x:a) -> String -> c x) -> ((x:a) -> c x -> String) -> InputAttribute a f g c -> JS_IO (Maybe (Update (DPair a f)))
 initAttributeInp v n gcb _ _ (GenAttr x) =
     initAttribute v n gcb x
 initAttributeInp _ n gcb f _ (OnChange h) =
@@ -159,11 +161,11 @@ initAttributeInp _ n gcb f _ (OnChange h) =
     pure Nothing
 initAttributeInp (x**y) n gcb _ f (SetVal h) =
   do
-    procSetVal n (f <$> h x y)
-    pure $ Just $ MkUpdate (\(x**y) => f <$> h x y) (\_,z=> procSetVal n z)
+    procSetVal n (f x <$> h x y)
+    pure $ Just $ MkUpdate (\(x**y) => f x <$> h x y) (\_,z=> procSetVal n z)
 
 initAttributesInp : DPair a f -> DomNode -> GuiCallback a f g ->
-                      (String -> y) -> (y -> String) -> List (InputAttribute a f g y) -> JS_IO (List (Update (DPair a f)))
+                      ((x:a) -> String -> y x) -> ((x:a) -> y x -> String) -> List (InputAttribute a f g y) -> JS_IO (List (Update (DPair a f)))
 initAttributesInp v n gcb f j attrs =
   (catMaybes<$>) $ sequence $ map (initAttributeInp v n gcb f j) attrs
 
@@ -184,39 +186,57 @@ setState ctxU ctxS _ (Just z) =
     writeJSIORef ctxS z
     upds <- readJSIORef ctxU
     procUpdates oz z upds
-{-
-procOnEvent : GuiCallback () (const c) (const b) -> r ->
-                  List (FoldAttribute c b s r) -> JS_IO ()
-procOnEvent _ _ [] =
-  pure ()
-procOnEvent gcb z ((OnEvent h)::r) =
+
+
+procOnEvent : (x:a) -> f x -> r x -> (g x -> JS_IO ()) -> List (FoldAttribute a f g s r) -> JS_IO ()
+procOnEvent z m n fn [] = pure ()
+procOnEvent z m n fn (SetState _::r) = procOnEvent z m n fn r
+procOnEvent z m n fn (OnEvent h::_) = fn (h z m n)
+
+
+getSetState : List (FoldAttribute a f g s r) -> ((x:a) -> f x -> Maybe (s x))
+getSetState [] = \_,_=>Nothing
+getSetState (OnEvent _::r) = getSetState r
+getSetState (SetState h::_) = h
+
+foldGCB : ((x:a) -> (y:a) -> s x -> s y) -> ((x:a) -> s x -> i x -> (s x, Maybe (r x))) ->
+            List (FoldAttribute a f g s r) ->
+            JSIORef (DPair a s) -> GuiCallback a f g -> GuiCallback a s i
+foldGCB {a} {f} {g} {s} {r} {i} updParam upd attrs stateRef mainGCB =
   do
-    (x**(y,pr)) <- gcb
-    pr (h y z)
-procOnEvent gcb z ((SetState h)::r) =
-  procOnEvent gcb z r
+    (x**v) <- readJSIORef stateRef
+    (y**(m,fn)) <- mainGCB
+    let v' = updParam x y v
+    pure (y**(v', proc y v' m fn))
+  where
+    proc : (x:a) -> s x -> f x -> (g x -> JS_IO()) -> i x -> JS_IO ()
+    proc z st m fn v =
+      do
+        let (news, res) = upd z st v
+        writeJSIORef stateRef (z**news)
+        case res of
+          Nothing =>
+            pure ()
+          Just w =>
+            procOnEvent z m w fn attrs
 
-calcFoldUpdatesList: JSIORef (Updates (x:()**s)) -> JSIORef (x:()**s) -> List (FoldAttribute c b s r) -> Updates (x:()**c)
-calcFoldUpdatesList _ _ Nil = []
-calcFoldUpdatesList x y ((OnEvent _)::r) = calcFoldUpdatesList x y r
-calcFoldUpdatesList x y ((SetState h)::_) =
-  [MkUpdate (\(()**z)=> (\w=>(()**w)) <$> h z  ) (setState x y)]
+foldUpd : ((x:a) -> (y:a) -> s x -> s y) -> JSIORef (Updates (DPair a s))-> JSIORef (DPair a s) ->
+            ((x:a) -> f x -> Maybe (s x)) -> Update (DPair a f)
+foldUpd updParam refUpds refSt fn =
+  MkUpdate id upd
+  where
+    upd _ (z**v) =
+      do
+        (y**oldSt) <- readJSIORef refSt
+        newSt <-
+          case fn z v of
+            Nothing =>
+              pure (updParam y z oldSt)
+            Just w =>
+              pure w
+        upds <- readJSIORef refUpds
+        procUpdates (y**oldSt) (z**newSt) upds
 
-
-updateFold : JSIORef (Updates (x:()**s)) -> JSIORef (x:()**s) -> (s->i->(s,Maybe r)) ->
-              GuiCallback () (const c) (const b) -> List (FoldAttribute c b s r) ->
-               () -> i -> JS_IO ()
-updateFold ctxU ctxS updfn gcb attrs _ e =
-  do
-    (()**st) <- readJSIORef ctxS
-    let (newst, mr) = updfn st e
-    writeJSIORef ctxS (()**newst)
-    upds <- readJSIORef ctxU
-    procUpdates (()**st) (()**newst) upds
-    case mr of
-      Nothing => pure ()
-      Just x => procOnEvent gcb x attrs
--}
 
 removeListNodes : List (Remove, Updates a) -> JS_IO ()
 removeListNodes x =
@@ -232,6 +252,18 @@ convertGuiCallBack (z**k) c gcb =
     case c x y of
       Nothing => pure (z**(k, \_=> pure() ))
       Just w => pure (x**(w, pr))
+
+mapGuiCallBack : ((x:a) -> g x -> h x) -> GuiCallback a f h -> GuiCallback a f g
+mapGuiCallBack fn gcb =
+  do
+    (x**(y,pr)) <- gcb
+    pure (x**(y, \k=>pr $ fn x k))
+
+cMapGuiCallBack : ((x:a) -> h x -> f x) -> GuiCallback a h g -> GuiCallback a f g
+cMapGuiCallBack fn gcb =
+  do
+    (x**(y,pr)) <- gcb
+    pure (x**(fn x y, pr))
 
 mutual
 
@@ -269,17 +301,9 @@ mutual
   addListNodes {a} {f} {h} pos nd gcb genL t [] = pure []
   addListNodes {a} {f} {h} pos nd gcb genL t (x::xs) =
     do
-      us <- initTemplate' nd x (convertGuiCallBack x (\x,y=> index' pos $ genL x y) gcb) t --(convGCB x gcb) t
+      us <- initTemplate' nd x (convertGuiCallBack x (\x,y=> index' pos $ genL x y) gcb) t
       us' <- addListNodes (S pos) nd gcb genL t xs
       pure $ us :: us'
-{-    where
-      convGCB : DPair a h -> GuiCallback a f g -> GuiCallback a h g
-      convGCB (z**k) gcb =
-        do
-          (x**(y,pr)) <- gcb
-          case index' pos $ genL x y of
-            Nothing => pure (z**(k, \_=> pure() ))
-            Just w => pure (x**(w, pr))-}
 
   updateMaybeNode : DomNode -> GuiCallback a f g -> JSIORef (Maybe (DPair a h,Remove, Updates (DPair a h))) -> BTemplate a h g ->
                       ((x:a)-> f x -> Maybe (h x)) -> (DPair a f) -> JS_IO ()
@@ -374,20 +398,24 @@ mutual
     do
       i <- appendNode n "input"
       setAttribute i ("type", "text")
-      attrsUpds <- initAttributesInp v i gcb id id attrs
+      attrsUpds <- initAttributesInp v i gcb (\_,x=>x) (\_,x=>x) attrs
       pure (removeDomNode i, attrsUpds)
-{-  initTemplate' n v gcb (FoldNode {c} {b} {s} {i} {r} s0 fupd t attrs) =
+  initTemplate' n (y**v) gcb (FoldNode {a} {s} s0 upd updParam t attrs) =
     do
-      ctxS <- newJSIORef s0
-      ctxU <- newJSIORef []
+      let setSt = getSetState attrs
+      let s0' =
+        case setSt y v of
+          Nothing => s0 y
+          Just w => w
+      ctxS <- newJSIORef (y**s0')
+      ctxU <- newJSIORef $ the (Updates (DPair a s)) Prelude.List.Nil
       (r, upds) <- initTemplate'
                 n
-                s0
-                (readJSIORef ctxS)
-                (updateFold {c=c} {b=b} {s=s} {i=i} ctxU ctxS fupd gcb attrs)
+                (y**s0')
+                (foldGCB updParam upd attrs ctxS gcb)
                 t
       writeJSIORef ctxU upds
-      pure (r, calcFoldUpdatesList ctxU ctxS attrs)-}
+      pure (r, [foldUpd updParam ctxU ctxS setSt])
   initTemplate' n v gcb (FormNode submit attrs childs) =
     do
       frm <- appendNode n "form"
@@ -427,6 +455,12 @@ mutual
       attrsUpds <- initAttributes v newn gcb attrs
       updateMaybeNode n gcb ref t genM v
       pure (removeMaybeNode n ref >>= \_=>removeDomNode newn, [MkUpdate id (\o,new=> updateMaybeNode n gcb ref t genM new)])
+  initTemplate' n v gcb (MapNode fn tmpl) =
+    initTemplate' n v (mapGuiCallBack fn gcb) tmpl
+  initTemplate' n (x**v) gcb (CMapNode fn tmpl) =
+    do
+      ru <- initTemplate' n (x**(fn x v)) (cMapGuiCallBack fn gcb) tmpl
+      pure (mapUpdates (\(x**w)=>(x**(fn x w))) ru)
 
 {-  initTemplate' n v getst proc (CaseNode tag attrs f h templs) =
     do
@@ -497,8 +531,16 @@ initBody : b -> BTemplate () (const b) (const c) -> Eff () [HTML ()] [HTML (BGui
 initBody x t = call $ InitBody x t
 
 export
+initBodyM : f x -> BTemplate a f g -> Eff () [HTML ()] [HTML (BGuiRef a f g x)]
+initBodyM x t = call $ InitBody x t
+
+export
 updateGui : (f x ->  f x) -> Eff () [HTML (BGuiRef a f g x)] [HTML (BGuiRef a f g x)]
 updateGui h = call $ HtmlUpdate h
+
+export
+updateGuiM : (f x ->  f y) -> Eff () [HTML (BGuiRef a f g x)] [HTML (BGuiRef a f g y)]
+updateGuiM h = call $ HtmlUpdate h
 
 export
 putGui : f x -> Eff () [HTML (BGuiRef a f g x)] [HTML (BGuiRef a f g x)]
@@ -507,66 +549,3 @@ putGui v = updateGui (const v)
 export
 getInput : Eff (g x) [HTML (BGuiRef a f g x)]
 getInput = call GetInput
-
----------- Primitives -------------
-{-
-export
-textinput : List (InputAttribute a f g String) ->
-              Template a f
-textinput attrs = InputNode IText attrs
-
-
-export
-onchange : (a -> c -> b) ->
-             InputAttribute  a b c
-onchange = OnChange
-
-export
-onclick : (a -> b) -> Attribute a b
-onclick = EventClick
-
-export
-setval : (a -> Maybe y) -> InputAttribute a f y
-setval = DynSetVal
-
-export
-text : IGen c a String => List (Attribute a f) -> c -> Template a f
-text attrs x = TextNode attrs (getGen x)
-
-export
-form : (a -> b) -> List (Attribute a b) -> List (Template a b) -> Template a b
-form = FormNode
-
-export
-foldTemplate : s -> (s->i->(s,Maybe r)) -> Template s i -> List (FoldAttribute a b s r) -> Template a b
-foldTemplate = FoldNode
-
-export
-listOnDiv : List (Attribute a b) -> (a -> List c) -> Template c b -> Template a b
-listOnDiv = ListNode "div"
-
-export
-img : IGen c a String => List (Attribute a f) -> c -> Template a f
-img attrs x = ImgNode attrs (getGen x)
-
-export
-style : IGen s a (List Style) => s -> Attribute a f
-style x = StrAttribute "style" (map styleStr $ getGen x)
-
-
-
-infixl 4 >$<
-
-export
-(>$<) : (a->b) -> Template b c -> Template a c
-(>$<) = ContraMapNode
-
-export
-emptyTemplate : Template a b
-emptyTemplate = EmptyNode
-
-export
-caseTemplateSpan : DecEq i => List (Attribute a b) -> (f : i -> Type) ->  (a->DPair i f) ->
-                          ((x:i) -> Template (f x) b) -> Template a b
-caseTemplateSpan = CaseNode "span"
--}
