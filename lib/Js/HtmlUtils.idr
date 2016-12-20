@@ -141,6 +141,11 @@ customNode : String -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemp
 customNode = CustomNode (\_=>pure ())
 
 export
+listCustom : String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
+                        BTemplate a h g -> BTemplate a f g
+listCustom = ListNode
+
+export
 div : List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
 div = customNode "div"
 
