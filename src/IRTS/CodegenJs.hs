@@ -216,11 +216,11 @@ cgOp :: PrimFn -> [JsAST] -> JsAST
 cgOp (LPlus _) [l, r] = JsBinOp "+" l r
 cgOp (LMinus _) [l, r] = JsBinOp "-" l r
 cgOp (LTimes _) [l, r] = JsBinOp "*" l r
-cgOp (LEq (ATInt _)) [l, r] = JsB2I $ JsBinOp "==" l r
-cgOp (LSLt (ATInt _)) [l, r] = JsB2I $ JsBinOp "<" l r
-cgOp (LSLe (ATInt _)) [l, r] = JsB2I $ JsBinOp "<=" l r
-cgOp (LSGt (ATInt _)) [l, r] = JsB2I $ JsBinOp ">" l r
-cgOp (LSGe (ATInt _)) [l, r] = JsB2I $ JsBinOp ">=" l r
+cgOp (LEq _) [l, r] = JsB2I $ JsBinOp "==" l r
+cgOp (LSLt _) [l, r] = JsB2I $ JsBinOp "<" l r
+cgOp (LSLe _) [l, r] = JsB2I $ JsBinOp "<=" l r
+cgOp (LSGt _) [l, r] = JsB2I $ JsBinOp ">" l r
+cgOp (LSGe _) [l, r] = JsB2I $ JsBinOp ">=" l r
 cgOp LStrEq [l,r] = JsB2I $ JsBinOp "==" l r
 cgOp LStrLen [x] = JsForeign "%0.length" [x]
 cgOp LStrHead [x] = JsMethod x "charCodeAt" [JsInt 0]
