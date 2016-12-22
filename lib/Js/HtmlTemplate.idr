@@ -19,39 +19,32 @@ mutual
 
 
 public export
-data Gen a b = GenConst b | GenA (a->b)
+data Dyn a b = DynConst b | DynA (a->b)
 
 public export
-interface IGen c a b where
-  getGen : c -> Gen a b
+interface IDyn c a b where
+  getDyn : c -> Dyn a b
 
 export
-IGen b a b where
-  getGen x = GenConst x
+IDyn b a b where
+  getDyn x = DynConst x
 
 export
-IGen (a -> b) a b where
-  getGen x = GenA x
+Functor (Dyn a) where
+  map f (DynConst x) = DynConst (f x)
+  map f (DynA x) = DynA (f . x)
 
 export
-Functor (Gen a) where
-  map f (GenConst x) = GenConst (f x)
-  map f (GenA x) = GenA (f . x)
+Applicative (Dyn a) where
+  pure = DynConst
+
+  (<*>) (DynConst f) fa = f <$> fa
+  (<*>) (DynA f) (DynA fa) = DynA (\x => (f x) (fa x))
+  (<*>) (DynA f) (DynConst fa) = DynA (\x => (f x) fa)
 
 export
-Applicative (Gen a) where
-  pure = GenConst
-
-  (<*>) (GenConst f) fa = f <$> fa
-  (<*>) (GenA f) (GenA fa) = GenA (\x => (f x) (fa x))
-  (<*>) (GenA f) (GenConst fa) = GenA (\x => (f x) fa)
-
-export
-IGen c b d => IGen c (DPair a (const b)) d where
-  getGen {b} {d} x =
-    case the (Gen b d) (getGen x) of
-      GenConst z => GenConst z
-      GenA fn => GenA $ \(_**y) => fn y
+IDyn (Dyn a b) a b where
+  getDyn x = x
 
 public export
 data InputType = IText
@@ -63,7 +56,7 @@ InputTypeTy IText = const String
 public export
 data Attribute : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   EventClick : ((x:a) -> f x -> g x) -> Attribute a f g
-  StrAttribute : String -> Gen (DPair a f) String -> Attribute a f g
+  StrAttribute : String -> Dyn (DPair a f) String -> Attribute a f g
 
 public export
 data InputAttribute : (a:Type) -> (a->Type) -> (a->Type) -> (a-> Type) -> Type where
@@ -79,7 +72,7 @@ data FoldAttribute : (a:Type) -> (a->Type) -> (a->Type) -> (a->Type) -> (a -> Ty
 public export
 data BTemplate : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   CustomNode : (DomNode -> JS_IO ()) -> String -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
-  TextNode : List (Attribute a f g) -> Gen (DPair a f) String -> BTemplate a f g
+  TextNode : List (Attribute a f g) -> Dyn (DPair a f) String -> BTemplate a f g
   InputNode : (t:InputType) -> List (InputAttribute a f g (InputTypeTy t)) ->
                   BTemplate a f g
   FoldNode : ((x:a) -> s x) -> ((x:a) -> s x -> i x -> (s x, Maybe (r x))) -> ((x:a) -> (y:a) -> s x -> s y) ->
@@ -87,7 +80,7 @@ data BTemplate : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   FormNode : ((x:a) -> f x -> g x) -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
   ListNode : String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
                           BTemplate a h g -> BTemplate a f g
-  ImgNode : List (Attribute a f g) -> Gen (DPair a f) String -> BTemplate a f g
+  ImgNode : List (Attribute a f g) -> Dyn (DPair a f) String -> BTemplate a f g
 --  ContraMapNode : (a -> b) -> BTemplate b (const c) -> BTemplate a (const c)
   EmptyNode : BTemplate a f g
   MaybeNode : String -> List (Attribute a f g) -> ((x:a)-> f x -> Maybe (h x)) -> BTemplate a h g -> BTemplate a f g
@@ -134,11 +127,11 @@ initAttribute _ n gcb (EventClick h) =
   do
     registEvent (procClick gcb h) n "click" (pure ())
     pure Nothing
-initAttribute _ n gcb (StrAttribute name (GenConst x) ) =
+initAttribute _ n gcb (StrAttribute name (DynConst x) ) =
   do
     setAttribute n (name, x)
     pure Nothing
-initAttribute v n gcb (StrAttribute name (GenA x) ) =
+initAttribute v n gcb (StrAttribute name (DynA x) ) =
   do
     setAttribute n (name, x v)
     pure $ Just $ MkUpdate x (updateStrAttribute n name)
@@ -386,11 +379,11 @@ mutual
       newn <- appendNode n "span"
       attrUpds <- initAttributes v newn gcb attrs
       case str of
-        GenConst z =>
+        DynConst z =>
           do
             setText z newn
             pure (removeDomNode newn, attrUpds)
-        GenA getter =>
+        DynA getter =>
           do
             setText (getter v) newn
             pure (removeDomNode newn, MkUpdate getter (\x,y => if x ==y then pure () else setText y newn) :: attrUpds)
@@ -436,11 +429,11 @@ mutual
       nd <- appendNode n "img"
       attrsUpds <- initAttributes v nd gcb attrs
       case gen of
-        GenConst x =>
+        DynConst x =>
           do
             setAttribute nd ("src", x)
             pure (removeDomNode nd, attrsUpds)
-        GenA g =>
+        DynA g =>
           do
             setAttribute nd ("src", g v)
             pure (removeDomNode nd, MkUpdate g (\x,y=> if x==y then pure () else setAttribute nd ("src", y)) :: attrsUpds)

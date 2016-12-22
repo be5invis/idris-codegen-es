@@ -23,12 +23,12 @@ ToDouble Double where
   toDouble = id
 
 export
-(ToDouble b, ToDouble c, ToDouble d) => IGen (b, c, d) a Point3 where
-  getGen (x,y,z) = GenConst (toDouble x, toDouble y, toDouble z)
+(ToDouble b, ToDouble c, ToDouble d) => IDyn (b, c, d) a Point3 where
+  getDyn (x,y,z) = DynConst (toDouble x, toDouble y, toDouble z)
 
 export
 data Transform : (a:Type) -> (a->Type) -> Type where
-  MkTransform : (Gen (DPair a f) Point3) -> (Gen (DPair a f) Point3) -> Transform a f
+  MkTransform : (Dyn (DPair a f) Point3) -> (Dyn (DPair a f) Point3) -> Transform a f
 
 export
 data NavigationType = NavigationNone
@@ -70,11 +70,11 @@ integerToString = show
 point3ToString : Point3 -> String
 point3ToString (x,y,z) = show x ++ " " ++ show y ++ " " ++ show z
 
-width : IGen w (DPair a f) Integer => w -> Attribute a f g
-width x = StrAttribute "width" (map integerToString $ getGen x)
+width : IDyn w (DPair a f) Integer => w -> Attribute a f g
+width x = StrAttribute "width" (map integerToString $ getDyn x)
 
-height : IGen h (DPair a f) Integer => h -> Attribute a f g
-height h = StrAttribute "height" (map integerToString $ getGen h)
+height : IDyn h (DPair a f) Integer => h -> Attribute a f g
+height h = StrAttribute "height" (map integerToString $ getDyn h)
 
 transformToAttr : Transform a f -> List (Attribute a f g)
 transformToAttr (MkTransform t s) =
@@ -146,12 +146,12 @@ box : Appearance -> BElement a f g
 box = Box
 
 export
-translation : IGen t (DPair a f) Point3 => t -> Transform a f
-translation x = MkTransform (getGen x) (pure (1,1,1))
+translation : IDyn t (DPair a f) Point3 => t -> Transform a f
+translation x = MkTransform (getDyn x) (pure (1,1,1))
 
 export
-scale : IGen s (DPair a f) Point3 => s -> Transform a f
-scale x = MkTransform (pure (0,0,0)) (getGen x)
+scale : IDyn s (DPair a f) Point3 => s -> Transform a f
+scale x = MkTransform (pure (0,0,0)) (getDyn x)
 
 export
 transform : List (Transform a f) -> List (BElement a f g) -> BElement a f g

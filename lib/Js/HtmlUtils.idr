@@ -118,6 +118,13 @@ namespace Simple
   onchange' : {t:Type} -> (c -> d) -> InputAttribute t (const b) (const d) (const c)
   onchange' fn = OnChange (\_,_,x=> fn x)
 
+export
+dynD : (DPair a f -> b) -> Dyn (DPair a f) b
+dynD x = DynA x
+
+export
+dyn : (c -> b) -> Dyn (DPair a (const c)) b
+dyn x = DynA (\(_**y)=> x y)
 
 export
 textinput : List (InputAttribute a f g (const String)) ->
@@ -125,12 +132,12 @@ textinput : List (InputAttribute a f g (const String)) ->
 textinput = InputNode IText
 
 export
-text : IGen t (DPair a f) String => List (Attribute a f g) -> t -> BTemplate a f g
-text attrs txt = TextNode attrs (getGen txt)
+text : IDyn t (DPair a f) String => List (Attribute a f g) -> t -> BTemplate a f g
+text attrs txt = TextNode attrs (getDyn txt)
 
 export
-img : IGen u (DPair a f) String => List (Attribute a f g) -> u -> BTemplate a f g
-img attrs url = ImgNode attrs (getGen url)
+img : IDyn u (DPair a f) String => List (Attribute a f g) -> u -> BTemplate a f g
+img attrs url = ImgNode attrs (getDyn url)
 
 export
 customNodeWidthPostProc : (DomNode -> JS_IO ()) -> String -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
@@ -155,9 +162,9 @@ span = customNode "span"
 
 
 export
-style : IGen s (DPair a f) (List Style) => s -> Attribute a f g
-style x = StrAttribute "style" (map styleStr $ getGen x)
+style : IDyn s (DPair a f) (List Style) => s -> Attribute a f g
+style x = StrAttribute "style" (map styleStr $ getDyn x)
 
 export
-button : IGen c (DPair a f) String => List (Attribute a f g) -> c -> BTemplate a f g
+button : IDyn c (DPair a f) String => List (Attribute a f g) -> c -> BTemplate a f g
 button attrs x = customNode "button" attrs [text [] x]
