@@ -6,6 +6,11 @@ import Js.Browser
 export
 data Appearance = DiffuseRGB Double Double Double
 
+export
+data ShapeOption : (a:Type) -> (a->Type) -> (a->Type) -> Type where
+  AppearanceOption : Appearance -> ShapeOption a f g
+  EventClick : ((x:a) -> f x -> g x) -> ShapeOption a f g
+
 public export
 Point3 : Type
 Point3 = (Double, Double, Double)
@@ -52,8 +57,8 @@ foldTransforms x =
 
 export
 data BElement : (a:Type) -> (a->Type) -> (a->Type) -> Type where
-  Sphere : Appearance -> BElement a f g
-  Box : Appearance -> BElement a f g
+  Sphere : List (ShapeOption a f g) -> BElement a f g
+  Box : List (ShapeOption a f g) -> BElement a f g
   TransformElem : List (Transform a f) -> List (BElement a f g) -> BElement a f g
   Group : ((x:a) -> f x -> List (h x)) ->
               BElement a h g -> BElement a f g
@@ -82,15 +87,25 @@ transformToAttr (MkTransform t s) =
   , StrAttribute "scale" (point3ToString <$> s)
   ]
 
+shapeOptToNodes : List (ShapeOption a f g) -> List (Template a f g)
+shapeOptToNodes [] = []
+shapeOptToNodes ((AppearanceOption x)::r) = appearanceToTemplate x :: shapeOptToNodes r
+shapeOptToNodes (_::r) = shapeOptToNodes r
+
+shapeOptToAttrs : List (ShapeOption a f g) -> List (Attribute a f g)
+shapeOptToAttrs [] = []
+shapeOptToAttrs ((EventClick f)::r) = EventClick f :: shapeOptToAttrs r
+shapeOptToAttrs (_::r) = shapeOptToAttrs r
+
 x3domToTempl : BElement a f g -> Template a f g
-x3domToTempl (Sphere ap) =
+x3domToTempl (Sphere opt) =
+  customNode "shape"
+    (shapeOptToAttrs opt)
+    (customNode  "sphere" [] [] :: shapeOptToNodes opt )
+x3domToTempl (Box opt) =
   customNode "shape"
     []
-    [appearanceToTemplate ap, customNode "sphere" [] []]
-x3domToTempl (Box ap) =
-  customNode "shape"
-    []
-    [appearanceToTemplate ap, customNode "box" [] []]
+    (customNode  "box" [] [] :: shapeOptToNodes opt )
 x3domToTempl (TransformElem transfs chlds) =
   customNode "transform"
     (transformToAttr $ foldTransforms transfs)
@@ -137,12 +152,20 @@ namespace Simple
               BElement t (const d) (const c) -> BElement t (const b) (const c)
   group fn = Group (\_,y=> fn y)
 
+  export
+  onclick : {t:Type} -> (b -> c) -> ShapeOption t (const b) (const c)
+  onclick fn = EventClick (\_,y=>fn y)
+
+  export
+  onclick' : {t:Type} -> c -> ShapeOption t (const b) (const c)
+  onclick' x = onclick (const x)
+
 export
-sphere : Appearance -> BElement a f g
+sphere : List (ShapeOption a f g) -> BElement a f g
 sphere = Sphere
 
 export
-box : Appearance -> BElement a f g
+box : List (ShapeOption a f g) -> BElement a f g
 box = Box
 
 export
@@ -159,8 +182,8 @@ transform x y = TransformElem x y
 
 
 export
-rgb : Double -> Double -> Double -> Appearance
-rgb = DiffuseRGB
+rgb : Double -> Double -> Double -> ShapeOption a f g
+rgb x y z = AppearanceOption $ DiffuseRGB x y z
 
 export
 viewPoint : Point3 -> Point3 -> Double -> SceneOption a f
