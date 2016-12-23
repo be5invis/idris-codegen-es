@@ -141,6 +141,15 @@ namespace Dependent
   Element : (a:Type) -> (a->Type) -> (a->Type) -> Type
   Element = BElement
 
+  export
+  group : ((x:a) -> f x -> List (h x)) ->
+              BElement a h g -> BElement a f g
+  group fn = Group fn
+
+  export
+  groupIndex : {h:a->Type} -> ((x:a) -> f x -> List (h x)) ->
+                          BElement a (\x=> (Nat, h x)) g -> BElement a f g
+  groupIndex fn t = group (\x,y => let l = fn x y in zip [0..length l] l) t
 
 namespace Simple
   public export
@@ -151,6 +160,12 @@ namespace Simple
   group : {t:Type} -> (b -> List d) ->
               BElement t (const d) (const c) -> BElement t (const b) (const c)
   group fn = Group (\_,y=> fn y)
+
+
+  export
+  groupIndex : {t:Type} -> (b -> List d) ->
+              BElement t (const (Nat,d)) (const c) -> BElement t (const b) (const c)
+  groupIndex {d} fn = X3dom.Dependent.groupIndex {h=\_=>d} (\_,y=> fn y)
 
   export
   onclick : {t:Type} -> (b -> c) -> ShapeOption t (const b) (const c)
