@@ -2,7 +2,7 @@ module Js.BrowserDom
 
 import Js.BrowserForeigns
 
-export
+public export
 data DomNode  = MkDomNode Ptr
 
 export

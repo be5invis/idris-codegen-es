@@ -92,18 +92,44 @@ shapeOptToNodes [] = []
 shapeOptToNodes ((AppearanceOption x)::r) = appearanceToTemplate x :: shapeOptToNodes r
 shapeOptToNodes (_::r) = shapeOptToNodes r
 
-shapeOptToAttrs : List (ShapeOption a f g) -> List (Attribute a f g)
-shapeOptToAttrs [] = []
-shapeOptToAttrs ((EventClick f)::r) = EventClick f :: shapeOptToAttrs r
-shapeOptToAttrs (_::r) = shapeOptToAttrs r
+
+shapeOptToProcs : List (ShapeOption a f g) ->
+                  ( DomNode -> GuiCallback a f g -> JS_IO (List (JS_IO ())) , List (JS_IO ()) -> JS_IO ())
+shapeOptToProcs x =
+  (shapeOptToProcs' x, sequence_)
+  where
+    shapeClickToProc : ((x:a) -> f x -> g x) ->
+                        (DomNode -> GuiCallback a f g -> JS_IO (JS_IO ()))
+    shapeClickToProc fn =
+      \n,gcb=> do
+        i <- genId
+        jscall "(function(){if(!window.x3domFnDict){window.x3domFnDict = {}}})()" (()->JS_IO ()) ()
+        jscall "window.x3domFnDict[%0] = %1" (Int -> (JsFn (() -> JS_IO ())) -> JS_IO ()) i (MkJsFn $ procClick gcb fn)
+        setAttribute n ("onclick", "window.x3domFnDict[" ++ show i ++ "] ()")
+        pure (jscall "delete window.x3domFnDict[%0]" (Int -> JS_IO ()) i)
+    shapeOptToProcs' :List (ShapeOption a f g) ->
+                        ( DomNode -> GuiCallback a f g -> JS_IO (List (JS_IO ())))
+    shapeOptToProcs' [] =
+      \_,_=> pure []
+    shapeOptToProcs' (EventClick fn::r) =
+      \x,y => do
+        t <- shapeClickToProc fn x y
+        r' <- shapeOptToProcs' r x y
+        pure (t::r')
+    shapeOptToProcs' (_::r) =
+      shapeOptToProcs' r
 
 x3domToTempl : BElement a f g -> Template a f g
 x3domToTempl (Sphere opt) =
-  customNode "shape"
-    (shapeOptToAttrs opt)
+  customNodeWidthPostProc
+    (shapeOptToProcs opt)
+    "shape"
+    []
     (customNode  "sphere" [] [] :: shapeOptToNodes opt )
 x3domToTempl (Box opt) =
-  customNode "shape"
+  customNodeWidthPostProc
+    (shapeOptToProcs opt)
+    "shape"
     []
     (customNode  "box" [] [] :: shapeOptToNodes opt )
 x3domToTempl (TransformElem transfs chlds) =
@@ -128,7 +154,7 @@ makeSceneOption (Navigation NavigationNone) =
 export
 x3dom : List (Attribute a f g) -> List (SceneOption a f) -> List (BElement a f g) -> Template a f g
 x3dom attrs options childs =
-  customNodeWidthPostProc (\_=> jscall "x3dom.reload()" (() -> JS_IO()) ()) "x3d" attrs
+  customNodeWidthPostProc (\_,_=> jscall "x3dom.reload()" (() -> JS_IO()) (), \_=> pure ()) "x3d" attrs
     [customNode "scene" []
        (map makeSceneOption options ++ map x3domToTempl childs)
     ]

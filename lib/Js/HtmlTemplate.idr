@@ -70,8 +70,13 @@ data FoldAttribute : (a:Type) -> (a->Type) -> (a->Type) -> (a->Type) -> (a -> Ty
   SetState : ((x:a) -> f x -> Maybe (s x)) -> FoldAttribute a f g s r
 
 public export
+GuiCallback : (a:Type) -> (a->Type) -> (a->Type) -> Type
+
+GuiCallback a f g = JS_IO (x:a**(f x, g x -> JS_IO ()))
+public export
 data BTemplate : (a:Type) -> (a->Type) -> (a->Type) -> Type where
-  CustomNode : (DomNode -> JS_IO ()) -> String -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
+  CustomNode : (DomNode -> GuiCallback a f g -> JS_IO d, d -> JS_IO ()) -> String ->
+                  List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
   TextNode : List (Attribute a f g) -> Dyn (DPair a f) String -> BTemplate a f g
   InputNode : (t:InputType) -> List (InputAttribute a f g (InputTypeTy t)) ->
                   BTemplate a f g
@@ -80,8 +85,6 @@ data BTemplate : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   FormNode : ((x:a) -> f x -> g x) -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
   ListNode : String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
                           BTemplate a h g -> BTemplate a f g
-  ImgNode : List (Attribute a f g) -> Dyn (DPair a f) String -> BTemplate a f g
---  ContraMapNode : (a -> b) -> BTemplate b (const c) -> BTemplate a (const c)
   EmptyNode : BTemplate a f g
   MaybeNode : String -> List (Attribute a f g) -> ((x:a)-> f x -> Maybe (h x)) -> BTemplate a h g -> BTemplate a f g
   MapNode : ((x:a) -> g x -> h x) -> BTemplate a f g -> BTemplate a f h
@@ -89,8 +92,6 @@ data BTemplate : (a:Type) -> (a->Type) -> (a->Type) -> Type where
 --  CaseNode : DecEq i => String -> List (Attribute a (const b)) -> (f : i -> Type) ->  (a->DPair i f) ->
 --                          ((x:i) -> BTemplate (f x) (const b)) -> BTemplate a (const b)
 
-GuiCallback : (a:Type) -> (a->Type) -> (a->Type) -> Type
-GuiCallback a f g = JS_IO (x:a**(f x, g x -> JS_IO ()))
 
 data Update : Type -> Type where
   MkUpdate : (a -> b) -> (b -> b -> JS_IO ()) -> Update a
@@ -111,6 +112,7 @@ procChange gcb j h str =
     (x**(y,pr)) <- gcb
     pr (h x y (j x str))
 
+export
 procClick : {g:a->Type} -> GuiCallback a f g -> ((x:a) -> f x -> g x) -> () -> JS_IO ()
 procClick gcb h () =
   do
@@ -367,13 +369,13 @@ mutual
 
   initTemplate' : DomNode -> DPair a f -> GuiCallback a f g ->
                       BTemplate a f g -> JS_IO (Remove, Updates (DPair a f))
-  initTemplate' n v gcb (CustomNode postProc tag attrs childs) =
+  initTemplate' n v gcb (CustomNode (postProc, onRemove) tag attrs childs) =
     do
       newn <- appendNode n tag
       attrsUpds <- initAttributes v newn gcb attrs
       (cr, childsUpds) <- initChilds newn v gcb childs
-      postProc newn
-      pure (cr >>= \_ => removeDomNode newn, attrsUpds ++ childsUpds)
+      or <- postProc newn gcb
+      pure (cr >>= \_ => removeDomNode newn >>= \_=> onRemove or, attrsUpds ++ childsUpds)
   initTemplate' n v gcb (TextNode attrs str) =
     do
       newn <- appendNode n "span"
@@ -424,21 +426,6 @@ mutual
       ctxU <- newJSIORef upds
       pure (readJSIORef ctxU >>= removeListNodes >>= \_ => removeDomNode newn
            , (MkUpdate id (updateLT newn gcb genL t ctxU)) :: attrsUpds)
-  initTemplate' n v gcb (ImgNode attrs gen) =
-    do
-      nd <- appendNode n "img"
-      attrsUpds <- initAttributes v nd gcb attrs
-      case gen of
-        DynConst x =>
-          do
-            setAttribute nd ("src", x)
-            pure (removeDomNode nd, attrsUpds)
-        DynA g =>
-          do
-            setAttribute nd ("src", g v)
-            pure (removeDomNode nd, MkUpdate g (\x,y=> if x==y then pure () else setAttribute nd ("src", y)) :: attrsUpds)
---  initTemplate' n v getst proc (ContraMapNode f t) =
---    mapUpdates f <$> initTemplate' n (f v) (f <$> getst) proc t
   initTemplate' n v gcb EmptyNode =
     pure (pure (), [])
   initTemplate' n v gcb (MaybeNode tag attrs genM t) =

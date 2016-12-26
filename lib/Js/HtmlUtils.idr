@@ -136,21 +136,22 @@ text : IDyn t (DPair a f) String => List (Attribute a f g) -> t -> BTemplate a f
 text attrs txt = TextNode attrs (getDyn txt)
 
 export
-img : IDyn u (DPair a f) String => List (Attribute a f g) -> u -> BTemplate a f g
-img attrs url = ImgNode attrs (getDyn url)
-
-export
-customNodeWidthPostProc : (DomNode -> JS_IO ()) -> String -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
+customNodeWidthPostProc : (DomNode -> GuiCallback a f g -> JS_IO d, d -> JS_IO ()) -> String ->
+                            List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
 customNodeWidthPostProc = CustomNode
 
 export
 customNode : String -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
-customNode = CustomNode (\_=>pure ())
+customNode = CustomNode (\_,_=>pure (),\_=>pure ())
 
 export
 listCustom : String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
                         BTemplate a h g -> BTemplate a f g
 listCustom = ListNode
+
+export
+img : IDyn u (DPair a f) String => List (Attribute a f g) -> u -> BTemplate a f g
+img attrs url = customNode "img" (StrAttribute "src" (getDyn url) ::attrs) []
 
 export
 div : List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
