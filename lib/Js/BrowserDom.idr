@@ -140,7 +140,7 @@ genId : JS_IO Int
 genId =
     jscall
         ("(function(){" ++
-         "    if(window.idris_js_global_id_counter){" ++
+         "    if(window.idris_js_global_id_counter!=undefined){" ++
          "      window.idris_js_global_id_counter += 1;" ++
          "    }else{" ++
          "      window.idris_js_global_id_counter = 0;" ++

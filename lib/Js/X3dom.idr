@@ -1,6 +1,7 @@
 module X3dom
 
 import Js.Browser
+import public Data.Matrix.Numeric
 
 
 export
@@ -13,23 +14,11 @@ data ShapeOption : (a:Type) -> (a->Type) -> (a->Type) -> Type where
 
 public export
 Point3 : Type
-Point3 = (Double, Double, Double)
+Point3 = Vect 3 Double
 
-export
-interface ToDouble a where
-  toDouble : a -> Double
-
-export
-ToDouble Integer where
-  toDouble = cast
-
-export
-ToDouble Double where
-  toDouble = id
-
-export
-(ToDouble b, ToDouble c, ToDouble d) => IDyn (b, c, d) a Point3 where
-  getDyn (x,y,z) = DynConst (toDouble x, toDouble y, toDouble z)
+public export
+p3 : Double -> Double -> Double -> Point3
+p3 x y z = [x,y,z]
 
 export
 data Transform : (a:Type) -> (a->Type) -> Type where
@@ -47,13 +36,15 @@ foldTransforms : List (Transform a f) -> Transform a f
 foldTransforms x =
   foldl
     reduce
-    (MkTransform (pure (0,0,0)) (pure (1,1,1)))
+    (MkTransform (pure [0,0,0]) (pure [1,1,1]))
     x
   where
     reduce (MkTransform t s) (MkTransform t' s') =
       MkTransform
-        ((\(x,y,z),(x',y',z') => (x+x',y+y',z+z')) <$> t <*> t')
-        ((\(x,y,z),(x',y',z') => (x*x',y*y',z*z')) <$> s <*> s')
+        (zipWith (+) <$> t <*> t')
+        (zipWith (*) <$> s <*> s')
+  --      ((\[x,y,z],(x',y',z') => (x+x',y+y',z+z')) <$> t <*> t')
+  --      ((\(x,y,z),(x',y',z') => (x*x',y*y',z*z')) <$> s <*> s')
 
 export
 data BElement : (a:Type) -> (a->Type) -> (a->Type) -> Type where
@@ -73,7 +64,7 @@ integerToString : Integer -> String
 integerToString = show
 
 point3ToString : Point3 -> String
-point3ToString (x,y,z) = show x ++ " " ++ show y ++ " " ++ show z
+point3ToString [x,y,z] = show x ++ " " ++ show y ++ " " ++ show z
 
 width : IDyn w (DPair a f) Integer => w -> Attribute a f g
 width x = StrAttribute "width" (map integerToString $ getDyn x)
@@ -105,7 +96,7 @@ shapeOptToProcs x =
         i <- genId
         jscall "(function(){if(!window.x3domFnDict){window.x3domFnDict = {}}})()" (()->JS_IO ()) ()
         jscall "window.x3domFnDict[%0] = %1" (Int -> (JsFn (() -> JS_IO ())) -> JS_IO ()) i (MkJsFn $ procClick gcb fn)
-        setAttribute n ("onclick", "window.x3domFnDict[" ++ show i ++ "] ()")
+        setAttribute n ("onclick", "try{window.x3domFnDict[" ++ show i ++ "] ()}catch(err){console.log(err)}")
         pure (jscall "delete window.x3domFnDict[%0]" (Int -> JS_IO ()) i)
     shapeOptToProcs' :List (ShapeOption a f g) ->
                         ( DomNode -> GuiCallback a f g -> JS_IO (List (JS_IO ())))
@@ -211,11 +202,11 @@ box = Box
 
 export
 translation : IDyn t (DPair a f) Point3 => t -> Transform a f
-translation x = MkTransform (getDyn x) (pure (1,1,1))
+translation x = MkTransform (getDyn x) (pure [1,1,1])
 
 export
 scale : IDyn s (DPair a f) Point3 => s -> Transform a f
-scale x = MkTransform (pure (0,0,0)) (getDyn x)
+scale x = MkTransform (pure [0,0,0]) (getDyn x)
 
 export
 transform : List (Transform a f) -> List (BElement a f g) -> BElement a f g
