@@ -8,8 +8,8 @@ data TodoAction : Nat -> Type where
 
 
 vw : Template Nat (\n=> Vect n String) (\n=>TodoAction n)
-vw = div [] [ bform [onchange (\_,_,x => TodoAdd x)] textform
-            , vectOnDivIndex [] id (\_,x=>x) (div [] [button [onclick (\_,x => TodoRemove $ fst x)] "x", text [] (\(_**(_,s))=>s)])
+vw = div [] [ bform [onsubmit (\_,_,x => TodoAdd x)] textform
+            , vectOnDivIndex [] id (\_,x=>x) (div [] [button [onclick (\_,x => TodoRemove $ fst x)] "x", text [] (dynD $ \(_**(_,s))=>s)])
             ]
 
 Gui : Nat -> Type
@@ -40,34 +40,3 @@ page =
 
 main : JS_IO ()
 main = setASync_ $ run page
-{-
-data TodoAction = TodoAdd String
-                | TodoRemove Nat
-
-
-vw : Template (List String) TodoAction
-vw = div [] [ bform [onchange' TodoAdd] textform
-            , listOnDivIndex [] id (div [] [button [onclick (TodoRemove . fst)] "x", text [] Prelude.Basics.snd])
-            ]
-
-Gui : Type
-Gui = GuiRef (List String) TodoAction
-
-pageLoop : Eff () [HTML Gui]
-pageLoop =
-  do
-    x <- getInput
-    case x of
-      TodoAdd z => update (z::)
-      TodoRemove i => update (\y=>take i y  ++ drop (i+1) y)
-    pageLoop
-
-page : Eff () [HTML ()] [HTML Gui]
-page =
-  do
-    initBody [] vw
-    pageLoop
-
-main : JS_IO ()
-main = setASync_ $ run page
--}

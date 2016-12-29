@@ -9,8 +9,12 @@ data Appearance = DiffuseRGB Double Double Double
 
 export
 data ShapeOption : (a:Type) -> (a->Type) -> (a->Type) -> Type where
-  AppearanceOption : Appearance -> ShapeOption a f g
+  ShapeAppearance : Appearance -> ShapeOption a f g
   EventClick : ((x:a) -> f x -> g x) -> ShapeOption a f g
+
+export
+data TextOption : (a:Type) -> (a->Type) -> (a->Type) -> Type where
+  TextAppearance : Appearance -> TextOption a f g
 
 public export
 Point3 : Type
@@ -22,7 +26,8 @@ p3 x y z = [x,y,z]
 
 export
 data Transform : (a:Type) -> (a->Type) -> Type where
-  MkTransform : (Dyn (DPair a f) Point3) -> (Dyn (DPair a f) Point3) -> Transform a f
+  MkTransform : (Dyn (DPair a f) Point3) -> (Dyn (DPair a f) Point3) ->
+    (Dyn (DPair a f) Point3, Dyn (DPair a f) Double) -> Transform a f
 
 export
 data NavigationType = NavigationNone
@@ -36,20 +41,20 @@ foldTransforms : List (Transform a f) -> Transform a f
 foldTransforms x =
   foldl
     reduce
-    (MkTransform (pure [0,0,0]) (pure [1,1,1]))
+    (MkTransform (pure [0,0,0]) (pure [1,1,1]) (pure [0,0,0], pure 0))
     x
   where
-    reduce (MkTransform t s) (MkTransform t' s') =
+    reduce (MkTransform t s (v,a)) (MkTransform t' s' (v', a')) =
       MkTransform
         (zipWith (+) <$> t <*> t')
         (zipWith (*) <$> s <*> s')
-  --      ((\[x,y,z],(x',y',z') => (x+x',y+y',z+z')) <$> t <*> t')
-  --      ((\(x,y,z),(x',y',z') => (x*x',y*y',z*z')) <$> s <*> s')
+        (zipWith (+) <$> v <*> v', (+) <$> a <*> a' )
 
 export
 data BElement : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   Sphere : List (ShapeOption a f g) -> BElement a f g
   Box : List (ShapeOption a f g) -> BElement a f g
+  Text : Dyn (DPair a f) String -> List (TextOption a f g) -> BElement a f g
   TransformElem : List (Transform a f) -> List (BElement a f g) -> BElement a f g
   Group : ((x:a) -> f x -> List (h x)) ->
               BElement a h g -> BElement a f g
@@ -73,16 +78,21 @@ height : IDyn h (DPair a f) Integer => h -> Attribute a f g
 height h = StrAttribute "height" (map integerToString $ getDyn h)
 
 transformToAttr : Transform a f -> List (Attribute a f g)
-transformToAttr (MkTransform t s) =
+transformToAttr (MkTransform t s (v,a)) =
   [ StrAttribute "translation" (point3ToString <$> t)
   , StrAttribute "scale" (point3ToString <$> s)
+  , StrAttribute "rotation" $ ((\z,w=> point3ToString z ++ " " ++ show w) <$> v <*> a )
   ]
 
 shapeOptToNodes : List (ShapeOption a f g) -> List (Template a f g)
 shapeOptToNodes [] = []
-shapeOptToNodes ((AppearanceOption x)::r) = appearanceToTemplate x :: shapeOptToNodes r
+shapeOptToNodes ((ShapeAppearance x)::r) = appearanceToTemplate x :: shapeOptToNodes r
 shapeOptToNodes (_::r) = shapeOptToNodes r
 
+textOptToNodes : List (TextOption a f g) -> List (Template a f g)
+textOptToNodes [] = []
+textOptToNodes ((TextAppearance x)::r) = appearanceToTemplate x :: textOptToNodes r
+textOptToNodes (_::r) = textOptToNodes r
 
 shapeOptToProcs : List (ShapeOption a f g) ->
                   ( DomNode -> GuiCallback a f g -> JS_IO (List (JS_IO ())) , List (JS_IO ()) -> JS_IO ())
@@ -96,7 +106,7 @@ shapeOptToProcs x =
         i <- genId
         jscall "(function(){if(!window.x3domFnDict){window.x3domFnDict = {}}})()" (()->JS_IO ()) ()
         jscall "window.x3domFnDict[%0] = %1" (Int -> (JsFn (() -> JS_IO ())) -> JS_IO ()) i (MkJsFn $ procClick gcb fn)
-        setAttribute n ("onclick", "try{window.x3domFnDict[" ++ show i ++ "] ()}catch(err){console.log(err)}")
+        setAttribute n ("onclick", "try{window.x3domFnDict[" ++ show i ++ "] ()}catch(err){console.error(err.message)}")
         pure (jscall "delete window.x3domFnDict[%0]" (Int -> JS_IO ()) i)
     shapeOptToProcs' :List (ShapeOption a f g) ->
                         ( DomNode -> GuiCallback a f g -> JS_IO (List (JS_IO ())))
@@ -123,6 +133,12 @@ x3domToTempl (Box opt) =
     "shape"
     []
     (customNode  "box" [] [] :: shapeOptToNodes opt )
+x3domToTempl (Text t opt) =
+  customNode
+    "shape"
+    []
+    (customNode  "text" [StrAttribute "string" t] [] :: textOptToNodes opt )
+
 x3domToTempl (TransformElem transfs chlds) =
   customNode "transform"
     (transformToAttr $ foldTransforms transfs)
@@ -201,21 +217,36 @@ box : List (ShapeOption a f g) -> BElement a f g
 box = Box
 
 export
+text : IDyn t (DPair a f) String => t -> List (TextOption a f g) -> BElement a f g
+text x = Text (getDyn x)
+
+export
 translation : IDyn t (DPair a f) Point3 => t -> Transform a f
-translation x = MkTransform (getDyn x) (pure [1,1,1])
+translation x = MkTransform (getDyn x) (pure [1,1,1]) (pure [0,0,0], pure 0)
 
 export
 scale : IDyn s (DPair a f) Point3 => s -> Transform a f
-scale x = MkTransform (pure [0,0,0]) (getDyn x)
+scale x = MkTransform (pure [0,0,0]) (getDyn x) (pure [0,0,0], pure 0)
+
+
+--rotation do not sum very well ...
+export
+rotation : (IDyn v (DPair a f) Point3, IDyn w (DPair a f) Double) => v -> w -> Transform a f
+rotation x y = MkTransform (pure [0,0,0]) (pure [0,0,0]) (getDyn x, getDyn y)
 
 export
 transform : List (Transform a f) -> List (BElement a f g) -> BElement a f g
 transform x y = TransformElem x y
 
+namespace Shape
+  export
+  rgb : Double -> Double -> Double -> ShapeOption a f g
+  rgb x y z = ShapeAppearance $ DiffuseRGB x y z
 
-export
-rgb : Double -> Double -> Double -> ShapeOption a f g
-rgb x y z = AppearanceOption $ DiffuseRGB x y z
+namespace Text
+  export
+  rgb : Double -> Double -> Double -> TextOption a f g
+  rgb x y z = TextAppearance $ DiffuseRGB x y z
 
 export
 viewPoint : Point3 -> Point3 -> Double -> SceneOption a f

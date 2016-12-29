@@ -21,6 +21,11 @@ errstr x = foldl (\x,y=>x++";"++y) "" $ errors x
 public export
 data FormEvent a = Value a | Submit
 
+public export
+data FormAttribute : (a:Type) -> (a->Type) -> (a->Type) -> (a-> Type) -> Type where
+  GenAttr : Attribute a f g -> FormAttribute a f g c
+  OnSubmit : ((x:a) -> f x -> c x -> g x) -> FormAttribute a f g c
+  SetFormVal : ((x:a) -> f x -> Maybe (c x)) -> FormAttribute a f g c
 
 public export
 data Form : (a:Type) -> (a->Type) -> Type where
@@ -36,14 +41,14 @@ FoldState : (a:Type) -> (a->Type)-> a -> Type
 FoldState a g x = (MError (g x), Maybe (MError (g x)))
 
 
-toFoldAttrs : List (InputAttribute a f g c) -> List (FoldAttribute a f g (FoldState a c) c)
+toFoldAttrs : List (FormAttribute a f g c) -> List (FoldAttribute a f g (FoldState a c) c)
 toFoldAttrs Nil = Nil
 toFoldAttrs ((GenAttr _)::r) = toFoldAttrs r
-toFoldAttrs ((OnChange f)::r) = (OnEvent f)::toFoldAttrs r
-toFoldAttrs ((SetVal f)::r) = SetState (\z,w=> (\k=>(Right k, Just (Right k))) <$> f z w) :: toFoldAttrs r
+toFoldAttrs ((OnSubmit f)::r) = (OnEvent f)::toFoldAttrs r
+toFoldAttrs ((SetFormVal f)::r) = SetState (\z,w=> (\k=>(Right k, Just (Right k))) <$> f z w) :: toFoldAttrs r
 
 export
-bform : List (InputAttribute a f g c) -> Form a c -> Template a f g
+bform : List (FormAttribute a f g c) -> Form a c -> Template a f g
 bform {a} {f} {g} {c} attrs (MkForm v0 conv tmpls) =
   foldTemplate
     (\z=>(v0 z,Nothing))
@@ -84,3 +89,13 @@ textform =
 
     inpBox : Template (Maybe (MError String)) (MError String)
     inpBox = textinput [onchange' (\s=>Right s), setVal setV]
+
+namespace Simple
+  export
+  onsubmit : {t:Type} -> (b -> c -> d) -> FormAttribute t (const b) (const d) (const c)
+  onsubmit fn = OnSubmit (\_,x,y=> fn x y)
+
+namespace Dependent
+  export
+  onsubmit : ((x:a) -> f x -> c x -> g x) -> FormAttribute a f g c
+  onsubmit = OnSubmit
