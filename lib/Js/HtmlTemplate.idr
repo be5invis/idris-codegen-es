@@ -464,6 +464,7 @@ data Html : Effect where
   InitBody : f x -> BTemplate a f g -> sig Html () () (BGuiRef a f g x)
   HtmlUpdate : (f x -> f y) -> sig Html () (BGuiRef a f g x) (BGuiRef a f g y)
   GetInput : sig Html (g x) (BGuiRef a f g x)
+  ConsoleLog : String -> sig Html () a
 
 public export
 HTML : (ty : Type) -> EFFECT
@@ -504,6 +505,7 @@ implementation Handler Html ASync where
   handle () (InitBody x t) k = do  b <- liftJS_IO body; r' <- liftJS_IO $ initTemplate b x t; k () r'
   handle r (HtmlUpdate f) k = do r' <- liftJS_IO $ updateTemplate f r; k () r'
   handle r GetInput k = do y <- getInputTemplate r; k y r
+  handle r (ConsoleLog s) k = do liftJS_IO $ putStr' s; k () r
 
 
 export
@@ -529,3 +531,7 @@ putGui v = updateGui (const v)
 export
 getInput : Eff (g x) [HTML (BGuiRef a f g x)]
 getInput = call GetInput
+
+export
+consoleLog : String -> Eff () [HTML a]
+consoleLog s = call $ ConsoleLog s
