@@ -106,7 +106,7 @@ shapeOptToProcs x =
         i <- genId
         jscall "(function(){if(!window.x3domFnDict){window.x3domFnDict = {}}})()" (()->JS_IO ()) ()
         jscall "window.x3domFnDict[%0] = %1" (Int -> (JsFn (() -> JS_IO ())) -> JS_IO ()) i (MkJsFn $ procClick gcb fn)
-        setAttribute n ("onclick", "try{window.x3domFnDict[" ++ show i ++ "] ()}catch(err){console.error(err.message)}")
+        setAttribute n ("onclick", "try{window.x3domFnDict[" ++ show i ++ "] ()}catch(err){console.error(err,err.message)}")
         pure (jscall "delete window.x3domFnDict[%0]" (Int -> JS_IO ()) i)
     shapeOptToProcs' :List (ShapeOption a f g) ->
                         ( DomNode -> GuiCallback a f g -> JS_IO (List (JS_IO ())))
