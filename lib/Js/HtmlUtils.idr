@@ -13,23 +13,23 @@ namespace Dependent
   GuiRef = BGuiRef
 
   export
-  maybeOnSpan : List (Attribute a f g) -> ((x:a)-> f x -> Maybe (h x)) -> BTemplate a h g -> BTemplate a f g
-  maybeOnSpan = MaybeNode "span"
+  maybeOnSpanD : List (Attribute a f g) -> ((x:a)-> f x -> Maybe (h x)) -> BTemplate a h g -> BTemplate a f g
+  maybeOnSpanD = MaybeNode "span"
 
   export
-  listOnDiv : List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
+  listOnDivD : List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
                           BTemplate a h g -> BTemplate a f g
-  listOnDiv = ListNode "div"
+  listOnDivD = ListNode "div"
 
   export
-  listOnDivIndex : {h:a->Type} -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
+  listOnDivIndexD : {h:a->Type} -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
                           BTemplate a (\x=> (Nat, h x)) g -> BTemplate a f g
-  listOnDivIndex attrs fn t = listOnDiv attrs (\x,y => let l = fn x y in zip [0..length l] l) t
+  listOnDivIndexD attrs fn t = listOnDivD attrs (\x,y => let l = fn x y in zip [0..length l] l) t
 
   export
   vectOnDivIndex : {h:a->Type} -> List (Attribute a f g) -> (len : a->Nat) -> ((x:a) -> f x -> Vect (len x) (h x)) ->
                      BTemplate a (\x=>(Fin (len x), h x)) g -> BTemplate a f g
-  vectOnDivIndex attrs len fn t = listOnDiv attrs (\x,y => let l = fn x y in toList $ zip range l) t
+  vectOnDivIndex attrs len fn t = listOnDivD attrs (\x,y => let l = fn x y in toList $ zip range l) t
 
   export
   onclick : ((x:a) -> f x -> g x) -> Attribute a f g
@@ -80,7 +80,7 @@ namespace Simple
   export
   listOnDivIndex : {t:Type} -> List (Attribute t (const b) (const c)) -> (b -> List d) ->
                           BTemplate t (const (Nat, d)) (const c) -> BTemplate t (const b) (const c)
-  listOnDivIndex {d} attrs fn = listOnDivIndex {h=\_=>d} attrs (\_,y=> fn y)
+  listOnDivIndex {d} attrs fn = listOnDivIndexD {h=\_=>d} attrs (\_,y=> fn y)
 
   export
   onclick : {t:Type} -> (b -> c) -> Attribute t (const b) (const c)

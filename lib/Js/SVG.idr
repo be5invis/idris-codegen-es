@@ -2,6 +2,10 @@ module SVG
 
 import Js.Browser
 
+export
+data SVGElemD : (a:Type) -> (a->Type) -> (a->Type) -> Type where
+  Square : SVGElemD a f g
+
 {-
 export
 data SVG : Type -> Type -> Type where
