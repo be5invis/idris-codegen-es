@@ -5,43 +5,21 @@ import Data.Fin
 
 %access export
 
-public export
-data Color = RGB (Fin 256) (Fin 256) (Fin 256)
 
-data Length = MkLength String
-
-px : Integer -> Length
-px x = MkLength $ show x ++ "px"
-
-Show Length where
-  show (MkLength x) = "calc(" ++ x ++ ")"
-
-Num Length where
-  (+) (MkLength x) (MkLength y) = MkLength $ "(" ++ x ++ "+" ++ y ++ ")"
-  (*) (MkLength x) (MkLength y) = MkLength $ "(" ++ x ++ "*" ++ y ++ ")"
-  fromInteger = px
-
-Show Color where
-  show (RGB r g b) =
-    "rgb(" ++ (show $ finToInteger r) ++ "," ++ (show $ finToInteger g) ++
-      "," ++ (show $ finToInteger b) ++ ")"
-
-
-
-height : Length -> Style
+height : Double -> Style
 height x = MkStyle "height" (show x)
 
-width : Length -> Style
+width : Double -> Style
 width x = MkStyle "width" (show x)
 
-margin : Length -> Style
+margin : Double -> Style
 margin x = MkStyle "margin" (show x)
 
-padding : Length -> Style
+padding : Double -> Style
 padding x = MkStyle "padding" (show x)
 
-backgroundColor : Color -> Style
-backgroundColor x = MkStyle "background-color" (show x)
+backgroundColor : String -> Style
+backgroundColor x = MkStyle "background-color" x
 
 public export
 data FlexDirection = Row | Column
@@ -76,18 +54,18 @@ record BoxShadowArguments where
   vShadow : Int
   blur : Int
   spread : Int;
-  color : Color
+  color : String
 
 private
 boxShadowArgsToString : BoxShadowArguments -> String
 boxShadowArgsToString x =
   unwords
-      [(show $ hShadow x) ++ "px", (show $ vShadow x) ++ "px", (show $ blur x) ++ "px", (show $ spread x) ++ "px", show $ color x]
+      [(show $ hShadow x) ++ "px", (show $ vShadow x) ++ "px", (show $ blur x) ++ "px", (show $ spread x) ++ "px", color x]
 
 boxShadow : List BoxShadowOption -> Style
 boxShadow x =
   MkStyle "box-shadow"
-    (boxShadowArgsToString $ foldl opt (MkBoxShadowArguments 0 0 0 0 (RGB 0 0 0)) x)
+    (boxShadowArgsToString $ foldl opt (MkBoxShadowArguments 0 0 0 0 "black") x)
   where
     opt : BoxShadowArguments -> BoxShadowOption -> BoxShadowArguments
     opt y (Blur x) = record{blur = x} y

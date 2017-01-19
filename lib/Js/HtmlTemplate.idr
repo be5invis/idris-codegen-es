@@ -75,7 +75,7 @@ GuiCallback : (a:Type) -> (a->Type) -> (a->Type) -> Type
 GuiCallback a f g = JS_IO (x:a**(f x, g x -> JS_IO ()))
 public export
 data BTemplate : (a:Type) -> (a->Type) -> (a->Type) -> Type where
-  CustomNode : (DomNode -> GuiCallback a f g -> JS_IO d, d -> JS_IO ()) -> String ->
+  CustomNode : (DomNode -> GuiCallback a f g -> JS_IO d, d -> JS_IO ()) -> Maybe String -> String ->
                   List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
   TextNode : List (Attribute a f g) -> Dyn (DPair a f) String -> BTemplate a f g
   InputNode : (t:InputType) -> List (InputAttribute a f g (InputTypeTy t)) ->
@@ -369,9 +369,9 @@ mutual
 
   initTemplate' : DomNode -> DPair a f -> GuiCallback a f g ->
                       BTemplate a f g -> JS_IO (Remove, Updates (DPair a f))
-  initTemplate' n v gcb (CustomNode (postProc, onRemove) tag attrs childs) =
+  initTemplate' n v gcb (CustomNode (postProc, onRemove) ns tag attrs childs) =
     do
-      newn <- appendNode n tag
+      newn <- appendNodeNS n ns tag
       attrsUpds <- initAttributes v newn gcb attrs
       (cr, childsUpds) <- initChilds newn v gcb childs
       or <- postProc newn gcb

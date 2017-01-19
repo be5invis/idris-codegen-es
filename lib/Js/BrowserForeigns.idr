@@ -42,6 +42,9 @@ replaceChild parent new old = jscall "%0.replaceChild(%1, %2)" (Ptr -> Ptr -> Pt
 createElement : String -> JS_IO Ptr
 createElement s = jscall "document.createElement(%0)" (String -> JS_IO Ptr) s
 
+createElementNS : String -> String -> JS_IO Ptr
+createElementNS n s = jscall "document.createElementNS(%0,%1)" (String -> String -> JS_IO Ptr) n s
+
 setAttr : Ptr -> (String, String) -> JS_IO ()
 setAttr node (k,v) = jscall "%0.setAttribute(%1, %2)" (Ptr -> String -> String -> JS_IO ()) node k v
 

@@ -138,11 +138,15 @@ text attrs txt = TextNode attrs (getDyn txt)
 export
 customNodeWidthPostProc : (DomNode -> GuiCallback a f g -> JS_IO d, d -> JS_IO ()) -> String ->
                             List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
-customNodeWidthPostProc = CustomNode
+customNodeWidthPostProc x = CustomNode x Nothing
 
 export
 customNode : String -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
-customNode = CustomNode (\_,_=>pure (),\_=>pure ())
+customNode = CustomNode (\_,_=>pure (),\_=>pure ()) Nothing
+
+export
+customNodeNS : String -> String -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
+customNodeNS ns = CustomNode (\_,_=>pure (),\_=>pure ()) (Just ns)
 
 export
 listCustom : String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->

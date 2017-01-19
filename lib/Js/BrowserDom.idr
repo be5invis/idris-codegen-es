@@ -31,10 +31,14 @@ Monad DomEvent where
         let MkDomEvent g = f a
         g x
 
+export
+appendNodeNS : DomNode -> Maybe String -> String -> JS_IO DomNode
+appendNodeNS (MkDomNode n) (Just ns) tag = MkDomNode <$> appendChild n !(createElementNS ns tag)
+appendNodeNS (MkDomNode n) Nothing tag = MkDomNode <$> appendChild n !(createElement tag)
 
 export
 appendNode : DomNode -> String -> JS_IO DomNode
-appendNode (MkDomNode n) tag = MkDomNode <$> appendChild n !(createElement tag)
+appendNode n tag = appendNodeNS n Nothing tag
 
 
 export
