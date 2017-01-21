@@ -75,15 +75,15 @@ GuiCallback : (a:Type) -> (a->Type) -> (a->Type) -> Type
 GuiCallback a f g = JS_IO (x:a**(f x, g x -> JS_IO ()))
 public export
 data BTemplate : (a:Type) -> (a->Type) -> (a->Type) -> Type where
-  CustomNode : (DomNode -> GuiCallback a f g -> JS_IO d, d -> JS_IO ()) -> Maybe String -> String ->
+  CustomNode : Maybe String -> String -> (DomNode -> GuiCallback a f g -> JS_IO d, d -> JS_IO ()) ->
                   List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
-  TextNode : List (Attribute a f g) -> Dyn (DPair a f) String -> BTemplate a f g
+  TextNode : Maybe String -> String -> List (Attribute a f g) -> Dyn (DPair a f) String -> BTemplate a f g
   InputNode : (t:InputType) -> List (InputAttribute a f g (InputTypeTy t)) ->
                   BTemplate a f g
   FoldNode : ((x:a) -> s x) -> ((x:a) -> s x -> i x -> (s x, Maybe (r x))) -> ((x:a) -> (y:a) -> s x -> s y) ->
                BTemplate a s i -> List (FoldAttribute a f g s r) -> BTemplate a f g
   FormNode : ((x:a) -> f x -> g x) -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
-  ListNode : String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
+  ListNode : Maybe String -> String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
                           BTemplate a h g -> BTemplate a f g
   EmptyNode : BTemplate a f g
   MaybeNode : String -> List (Attribute a f g) -> ((x:a)-> f x -> Maybe (h x)) -> BTemplate a h g -> BTemplate a f g
@@ -369,16 +369,16 @@ mutual
 
   initTemplate' : DomNode -> DPair a f -> GuiCallback a f g ->
                       BTemplate a f g -> JS_IO (Remove, Updates (DPair a f))
-  initTemplate' n v gcb (CustomNode (postProc, onRemove) ns tag attrs childs) =
+  initTemplate' n v gcb (CustomNode ns tag (postProc, onRemove) attrs childs) =
     do
       newn <- appendNodeNS n ns tag
       attrsUpds <- initAttributes v newn gcb attrs
       (cr, childsUpds) <- initChilds newn v gcb childs
       or <- postProc newn gcb
-      pure (cr >>= \_ => removeDomNode newn >>= \_=> onRemove or, attrsUpds ++ childsUpds)
-  initTemplate' n v gcb (TextNode attrs str) =
+      pure (onRemove or >>= \_=> cr >>= \_ => removeDomNode newn, attrsUpds ++ childsUpds)
+  initTemplate' n v gcb (TextNode ns tag attrs str) =
     do
-      newn <- appendNode n "span"
+      newn <- appendNodeNS n ns tag
       attrUpds <- initAttributes v newn gcb attrs
       case str of
         DynConst z =>
@@ -418,9 +418,9 @@ mutual
       attrsUpds <- initAttributes v frm gcb attrs
       (cr, childsUpds) <- initChilds frm v gcb childs
       pure (cr >>= \_ => removeDomNode frm, attrsUpds ++ childsUpds)
-  initTemplate' n v gcb (ListNode tag attrs genL t) =
+  initTemplate' n v gcb (ListNode ns tag attrs genL t) =
     do
-      newn <- appendNode n tag
+      newn <- appendNodeNS n ns tag
       attrsUpds <- initAttributes v newn gcb attrs
       upds <- addListNodes 0 newn gcb genL t (tmplLstConv genL v)
       ctxU <- newJSIORef upds

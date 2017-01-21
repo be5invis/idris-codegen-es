@@ -3,6 +3,16 @@ module Js.HtmlUtils
 import Js.HtmlTemplate
 import Data.Vect
 
+export
+listCustomNS : String -> String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
+                        BTemplate a h g -> BTemplate a f g
+listCustomNS x = ListNode (Just x)
+
+export
+listCustom : String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
+                        BTemplate a h g -> BTemplate a f g
+listCustom = ListNode Nothing
+
 namespace Dependent
   public export
   Template : (a:Type) -> (a->Type) -> (a->Type) -> Type
@@ -19,7 +29,7 @@ namespace Dependent
   export
   listOnDivD : List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
                           BTemplate a h g -> BTemplate a f g
-  listOnDivD = ListNode "div"
+  listOnDivD = listCustom "div"
 
   export
   listOnDivIndexD : {h:a->Type} -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
@@ -75,7 +85,7 @@ namespace Simple
   export
   listOnDiv : {t:Type} -> List (Attribute t (const b) (const c)) -> (b -> List d) ->
                           BTemplate t (const d) (const c) -> BTemplate t (const b) (const c)
-  listOnDiv attrs fn = ListNode "div" attrs (\_,y=> fn y)
+  listOnDiv attrs fn = listCustom "div" attrs (\_,y=> fn y)
 
   export
   listOnDivIndex : {t:Type} -> List (Attribute t (const b) (const c)) -> (b -> List d) ->
@@ -132,26 +142,34 @@ textinput : List (InputAttribute a f g (const String)) ->
 textinput = InputNode IText
 
 export
-text : IDyn t (DPair a f) String => List (Attribute a f g) -> t -> BTemplate a f g
-text attrs txt = TextNode attrs (getDyn txt)
+customTextNS : String -> String -> List (Attribute a f g) -> Dyn (DPair a f) String -> BTemplate a f g
+customTextNS x = TextNode (Just x)
 
 export
-customNodeWidthPostProc : (DomNode -> GuiCallback a f g -> JS_IO d, d -> JS_IO ()) -> String ->
+customText : String -> List (Attribute a f g) -> Dyn (DPair a f) String -> BTemplate a f g
+customText = TextNode Nothing
+
+export
+text : IDyn t (DPair a f) String => List (Attribute a f g) -> t -> BTemplate a f g
+text attrs txt = customText "span" attrs (getDyn txt)
+
+export
+customNodeWidthPostProc : String -> (DomNode -> GuiCallback a f g -> JS_IO d, d -> JS_IO ()) ->
                             List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
-customNodeWidthPostProc x = CustomNode x Nothing
+customNodeWidthPostProc = CustomNode Nothing
+
+export
+customNodeWidthPostProcNS : String -> String -> (DomNode -> GuiCallback a f g -> JS_IO d, d -> JS_IO ()) ->
+                            List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
+customNodeWidthPostProcNS x = CustomNode (Just x)
 
 export
 customNode : String -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
-customNode = CustomNode (\_,_=>pure (),\_=>pure ()) Nothing
+customNode t = CustomNode Nothing t (\_,_=>pure (),\_=>pure ())
 
 export
 customNodeNS : String -> String -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
-customNodeNS ns = CustomNode (\_,_=>pure (),\_=>pure ()) (Just ns)
-
-export
-listCustom : String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
-                        BTemplate a h g -> BTemplate a f g
-listCustom = ListNode
+customNodeNS ns t = CustomNode (Just ns) t (\_,_=>pure (),\_=>pure ())
 
 export
 img : IDyn u (DPair a f) String => List (Attribute a f g) -> u -> BTemplate a f g

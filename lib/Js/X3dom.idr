@@ -123,14 +123,14 @@ shapeOptToProcs x =
 x3domToTempl : BElement a f g -> Template a f g
 x3domToTempl (Sphere opt) =
   customNodeWidthPostProc
-    (shapeOptToProcs opt)
     "shape"
+    (shapeOptToProcs opt)
     []
     (customNode  "sphere" [] [] :: shapeOptToNodes opt )
 x3domToTempl (Box opt) =
   customNodeWidthPostProc
-    (shapeOptToProcs opt)
     "shape"
+    (shapeOptToProcs opt)
     []
     (customNode  "box" [] [] :: shapeOptToNodes opt )
 x3domToTempl (Text t opt) =
@@ -161,7 +161,7 @@ makeSceneOption (Navigation NavigationNone) =
 export
 x3dom : List (Attribute a f g) -> List (SceneOption a f) -> List (BElement a f g) -> Template a f g
 x3dom attrs options childs =
-  customNodeWidthPostProc (\_,_=> jscall "x3dom.reload()" (() -> JS_IO()) (), \_=> pure ()) "x3d" attrs
+  customNodeWidthPostProc "x3d" (\_,_=> jscall "x3dom.reload()" (() -> JS_IO()) (), \_=> pure ()) attrs
     [customNode "scene" []
        (map makeSceneOption options ++ map x3domToTempl childs)
     ]
