@@ -39,20 +39,32 @@ data GOption : (a:Type) -> (a->Type) -> (a->Type) -> Type where
 
 export
 data SVGElemD : (a:Type) -> (a->Type) -> (a->Type) -> Type where
+  CMapElem : ((x:a) -> h x -> f x) -> SVGElemD a f g -> SVGElemD a h g
   Circle : List (CircleOption a f g) -> SVGElemD a f g
   Rect : List (RectOption a f g) -> SVGElemD a f g
   G : List (GOption a f g) ->
         ((x:a) -> f x -> List (h x)) ->
               SVGElemD a h g -> SVGElemD a f g
+  SG : List (GOption a f g) ->
+        List (SVGElemD a f g) -> SVGElemD a f g
   Text : List (TextOption a f g) -> Dyn (DPair a f) String -> SVGElemD a f g
 
 doubleToString : Double -> String
 doubleToString = show
 
+namespace Dependent
+  export
+  (>$<) : ((x:a) -> h x -> f x) -> SVGElemD a f g -> SVGElemD a h g
+  (>$<) = CMapElem
+
 namespace Simple
   public export
   SVGElem : {t:Type} -> Type -> Type -> Type
   SVGElem {t} b c = SVGElemD t (const b) (const c)
+
+  export
+  (>$<) : {t:Type} -> (c -> b) -> SVGElemD t (const b) (const d) -> SVGElemD t (const c) (const d)
+  (>$<) fn = CMapElem (\_=>fn)
 
 namespace Circle
   export
@@ -132,6 +144,11 @@ namespace Group
               SVGElemD t (const d) (const c) -> SVGElemD t (const b) (const c)
   g o f e = G o (\_,z=>f z) e
 
+export
+sG :  List (GOption a f g) ->
+        List (SVGElemD a f g) -> SVGElemD a f g
+sG = SG
+
 circleOptToAttr : CircleOption a f g -> Attribute a f g
 circleOptToAttr (MkCircleOption x) = x
 
@@ -144,13 +161,18 @@ gOptToAttr (MkGOption x) = x
 textOptToAttr : TextOption a f g -> Attribute a f g
 textOptToAttr (MkTextOption x) = x
 
+covering
 svgToTempl : SVGElemD a f g -> Template a f g
+svgToTempl (CMapElem f x) =
+  f >$< svgToTempl x
 svgToTempl (Circle opts) =
   customNodeNS svgNS "circle" (map circleOptToAttr opts) []
 svgToTempl (Rect opts) =
   customNodeNS svgNS "rect" (map rectOptToAttr opts) []
 svgToTempl (G opts fn childT) =
   listCustomNS svgNS "g" (map gOptToAttr opts) fn (svgToTempl childT)
+svgToTempl (SG opts childs) =
+  customNodeNS svgNS "g" (map gOptToAttr opts) (map svgToTempl childs)
 svgToTempl (Text opts str) =
   customTextNS svgNS "text" (map textOptToAttr opts) str
 
