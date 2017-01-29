@@ -97,6 +97,14 @@ namespace Simple
   onclick fn = EventClick (\_,y=>fn y)
 
   export
+  onShortPress : {t:Type} -> (b -> c) -> Attribute t (const b) (const c)
+  onShortPress fn = EventShortPress (\_,y=>fn y)
+
+  export
+  onLongPress : {t:Type} -> (b -> c) -> Attribute t (const b) (const c)
+  onLongPress fn = EventLongPress (\_,y=>fn y)
+
+  export
   onclick' : {t:Type} -> c -> Attribute t (const b) (const c)
   onclick' x = onclick (const x)
 

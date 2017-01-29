@@ -23,6 +23,10 @@ debugError : String -> JS_IO a
 debugError s = believe_me <$> jscall "throw2(%0)" (String -> JS_IO ()) s
 
 export
+setTimeout : JS_IO () -> Int -> JS_IO ()
+setTimeout act millis = jscall "setTimeout(%0,%1)" (JsFn (() -> JS_IO ()) -> Int -> JS_IO ()) (MkJsFn (\()=>act)) millis
+
+export
 isUndefined : Ptr -> JS_IO Bool
 isUndefined x =
   do

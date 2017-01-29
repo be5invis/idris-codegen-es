@@ -122,6 +122,16 @@ removeAttribute : DomNode -> String -> JS_IO ()
 removeAttribute (MkDomNode node) name = removeAttr node name
 
 export
+getDataAttr : DomNode -> String -> JS_IO String
+getDataAttr (MkDomNode node) name =
+  jscall "%0.dataset[%1] == undefined ? '' : %0.dataset[%1]" (Ptr -> String -> JS_IO String) node name
+
+export
+setDataAttr : DomNode -> String -> String -> JS_IO ()
+setDataAttr (MkDomNode node) name val =
+  jscall "%0.dataset[%1] = %2" (Ptr -> String -> String -> JS_IO ()) node name val
+
+export
 targetValue : DomEvent String
 targetValue = MkDomEvent $ \x => jscall "%0.target.value" (Ptr -> JS_IO String) x
 

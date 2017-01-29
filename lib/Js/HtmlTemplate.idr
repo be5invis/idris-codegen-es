@@ -57,6 +57,8 @@ public export
 data Attribute : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   EventClick : ((x:a) -> f x -> g x) -> Attribute a f g
   StrAttribute : String -> Dyn (DPair a f) String -> Attribute a f g
+  EventLongPress : ((x:a) -> f x -> g x) -> Attribute a f g
+  EventShortPress : ((x:a) -> f x -> g x) -> Attribute a f g
 
 public export
 data InputAttribute : (a:Type) -> (a->Type) -> (a->Type) -> (a-> Type) -> Type where
@@ -119,6 +121,12 @@ procClick gcb h () =
     (x**(y,pr)) <- gcb
     pr (h x y)
 
+procClickIf : {g:a->Type} -> JSIORef Bool -> GuiCallback a f g -> ((x:a) -> f x -> g x) -> () -> JS_IO ()
+procClickIf ref gcb h () =
+    if !(readJSIORef ref) then procClick gcb h ()
+      else pure ()
+
+
 updateStrAttribute : DomNode -> String -> String -> String -> JS_IO ()
 updateStrAttribute n name x1 x2 =
   if x1 == x2 then pure ()
@@ -128,6 +136,19 @@ initAttribute : DPair a f -> DomNode -> GuiCallback a f g -> Attribute a f g -> 
 initAttribute _ n gcb (EventClick h) =
   do
     registEvent (procClick gcb h) n "click" (pure ())
+    pure Nothing
+initAttribute _ n gcb (EventLongPress h) =
+  do
+    ref <- newJSIORef False
+    registEvent
+      (\() => (writeJSIORef ref True >>= \_=> setTimeout (procClickIf ref gcb h ()) 1000)) n "mousedown" (pure ())
+    registEvent (\()=>(writeJSIORef ref False >>= \_=>putStr' "longmouseup")) n "mouseup" (pure ())
+    pure Nothing
+initAttribute _ n gcb (EventShortPress h) =
+  do
+    ref <- newJSIORef False
+    registEvent (\() => (writeJSIORef ref True >>= \_=> setTimeout (writeJSIORef ref False) 500)) n "mousedown" (pure ())
+    registEvent (procClickIf ref gcb h) n "mouseup" (pure ())
     pure Nothing
 initAttribute _ n gcb (StrAttribute name (DynConst x) ) =
   do
