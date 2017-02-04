@@ -31,6 +31,22 @@ Monad DomEvent where
         let MkDomEvent g = f a
         g x
 
+public export
+data FillType = Forwards | Backwards | Both | None | Auto
+
+Show FillType where
+  show Forwards = "forwards"
+  show Backwards = "backwards"
+  show Both = "both"
+  show None = "none"
+  show Auto = "auto"
+
+public export
+record AnimationConfig where
+  constructor MkAnimationConfig
+  duration : Nat
+  fill : FillType
+
 export
 appendNodeNS : DomNode -> Maybe String -> String -> JS_IO DomNode
 appendNodeNS (MkDomNode n) (Just ns) tag = MkDomNode <$> appendChild n !(createElementNS ns tag)
@@ -120,6 +136,21 @@ setAttribute (MkDomNode n) attr =
 export
 removeAttribute : DomNode -> String -> JS_IO ()
 removeAttribute (MkDomNode node) name = removeAttr node name
+
+export
+setCSSProp : DomNode -> String -> String -> JS_IO ()
+setCSSProp (MkDomNode node) name value = jscall "%0.style[%1]=%2" (Ptr -> String -> String -> JS_IO ()) node name value
+
+export
+animateCSS : AnimationConfig -> DomNode -> List (List (String, String)) -> JS_IO ()
+animateCSS animConf (MkDomNode n) keyFrames =
+  do
+    opts <- makeJSObj $ [ ("duration", believe_me $ the (Int) $ cast $ duration animConf)
+                        , ("fill", believe_me $ show $ fill animConf)
+                        ]
+    kFramesList <- sequence $ map makeJSStringObj keyFrames
+    kFrames <- makeJSList kFramesList
+    jscall "%0.animate(%1, %2)" (Ptr -> Ptr -> Ptr -> JS_IO ()) n kFrames opts
 
 export
 getDataAttr : DomNode -> String -> JS_IO String

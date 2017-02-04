@@ -5,69 +5,97 @@ import Data.Fin
 
 %access export
 
+height : IDyn d (DPair a f) Double => d -> Attribute a f g
+height x = CSSAttribute "height" (doubleToString <$> getDyn x)
 
-height : Double -> Style
-height x = MkStyle "height" (show x)
+width : IDyn d (DPair a f) Double => d -> Attribute a f g
+width x = CSSAttribute "width" (doubleToString <$> getDyn x)
 
-width : Double -> Style
-width x = MkStyle "width" (show x)
+margin :IDyn d (DPair a f) Double => d -> Attribute a f g
+margin x = CSSAttribute "margin" (doubleToString <$> getDyn x)
 
-margin : Double -> Style
-margin x = MkStyle "margin" (show x)
+padding : IDyn d (DPair a f) Double => d -> Attribute a f g
+padding x = CSSAttribute "padding" (doubleToString <$> getDyn x)
 
-padding : Double -> Style
-padding x = MkStyle "padding" (show x)
+backgroundColor : IDyn s (DPair a f) String => s -> Attribute a f g
+backgroundColor x = CSSAttribute "background-color" (getDyn x)
 
-backgroundColor : String -> Style
-backgroundColor x = MkStyle "background-color" x
 
 public export
 data FlexDirection = Row | Column
 
+flexDirectionToString : FlexDirection -> String
+flexDirectionToString Row = "row"
+flexDirectionToString Column = "column"
+
+export
+data FlexOption : (a:Type) -> (a->Type) -> (a->Type) -> Type where
+  MkFlexOption : Attribute a f g -> FlexOption a f g
+
+export
+direction : IDyn d (DPair a f) FlexDirection => d -> FlexOption a f g
+direction x = MkFlexOption $ CSSAttribute "flex-direction" (flexDirectionToString <$> getDyn x)
+
 private
-Show FlexDirection where
-  show Row = "row"
-  show Column = "column"
+flexOptToAttr : FlexOption a f g -> Attribute a f g
+flexOptToAttr (MkFlexOption x) = x
 
-public export
-data FlexOption = Direction FlexDirection
-
-direction : FlexDirection -> FlexOption
-direction = Direction
-
-flex : List FlexOption -> Style
+flex : List (FlexOption a f g) -> Attribute a f g
 flex x =
-  CompStyle (MkStyle "display" "flex" :: map stlopt x)
-  where
-    stlopt : FlexOption -> Style
-    stlopt (Direction x) = MkStyle "flex-direction" (show x)
+  GroupAttribute $ CSSAttribute "display" (pure "flex") :: map flexOptToAttr x -- CSSAttribute  dir]
 
-public export
-data BoxShadowOption = Blur Int
-                     | HShadow Int
-                     | VShadow Int
+
+data BoxShadowOption : (a:Type) -> (a->Type) -> (a->Type) -> Type where
+  Blur : Dyn (DPair a f) Double -> BoxShadowOption a f g
+  HShadow : Dyn (DPair a f) Double -> BoxShadowOption a f g
+  VShadow : Dyn (DPair a f) Double -> BoxShadowOption a f g
+
+blur : IDyn d (DPair a f) Double => d -> BoxShadowOption a f g
+blur x = Blur $ getDyn x
+
+hShadow : IDyn d (DPair a f) Double => d -> BoxShadowOption a f g
+hShadow x = HShadow $ getDyn x
+
+vShadow : IDyn d (DPair a f) Double => d -> BoxShadowOption a f g
+vShadow x = VShadow $ getDyn x
 
 private
-record BoxShadowArguments where
+record BoxShadowArguments (a:Type) (f : a->Type) where
   constructor MkBoxShadowArguments
-  hShadow : Int
-  vShadow : Int
-  blur : Int
-  spread : Int;
-  color : String
+  hShadow : Dyn (DPair a f) Double
+  vShadow : Dyn (DPair a f) Double
+  blur : Dyn (DPair a f) Double
+  spread : Dyn (DPair a f) Double
+  color : Dyn (DPair a f) String
 
 private
-boxShadowArgsToString : BoxShadowArguments -> String
-boxShadowArgsToString x =
-  unwords
-      [(show $ hShadow x) ++ "px", (show $ vShadow x) ++ "px", (show $ blur x) ++ "px", (show $ spread x) ++ "px", color x]
-
-boxShadow : List BoxShadowOption -> Style
-boxShadow x =
-  MkStyle "box-shadow"
-    (boxShadowArgsToString $ foldl opt (MkBoxShadowArguments 0 0 0 0 "black") x)
+boxShadowOptionsToArgs : List (BoxShadowOption a f g) -> BoxShadowArguments a f
+boxShadowOptionsToArgs x =
+  foldl opt (MkBoxShadowArguments (pure 0) (pure 0) (pure 0) (pure 0) (pure "black")) x
   where
-    opt : BoxShadowArguments -> BoxShadowOption -> BoxShadowArguments
-    opt y (Blur x) = record{blur = x} y
-    opt y (HShadow x) = record{hShadow = x} y
-    opt y (VShadow x) = record{vShadow = x} y
+    opt : BoxShadowArguments a f -> BoxShadowOption a f g -> BoxShadowArguments a f
+    opt y (Blur x) = record{blur = getDyn x} y
+    opt y (HShadow x) = record{hShadow = getDyn x} y
+    opt y (VShadow x) = record{vShadow = getDyn x} y
+
+private
+boxShadowArgsToString : Double -> Double -> Double -> Double -> String -> String
+boxShadowArgsToString hsh vsh blr spr clr =
+  unwords
+      [(show hsh) ++ "px", (show vsh) ++ "px", (show blr) ++ "px", (show spr) ++ "px", clr]
+
+boxShadow :  List (BoxShadowOption a f g) -> Attribute a f g
+boxShadow {a} {f} x =
+  CSSAttribute "box-shadow" (boxShadowArgsToString <$> hShadow args <*> vShadow args <*> blur args <*> spread args <*> color args)
+  where
+    args : BoxShadowArguments a f
+    args = boxShadowOptionsToArgs x
+
+data Transform = MkTransform String
+
+translate : Double -> Double -> Transform
+translate x y =
+  MkTransform $ "translate(" ++ show x ++ "px," ++ show y ++ "px)"
+
+transform : IDyn t (DPair a f) Transform => t -> Attribute a f g
+transform x = CSSAttribute "transform" ((\(MkTransform z) => z) <$> getDyn x)

@@ -74,7 +74,6 @@ setSelected node True = jscall "%0.selected = true" (Ptr->JS_IO ()) node
 setSelected node False = jscall "%0.selected = false" (Ptr->JS_IO ()) node
 
 
-
 ------ Network -------
 
 httpGet_raw : String -> (String -> JS_IO ()) -> JS_IO ()

@@ -49,9 +49,6 @@ data SVGElemD : (a:Type) -> (a->Type) -> (a->Type) -> Type where
         List (SVGElemD a f g) -> SVGElemD a f g
   Text : List (TextOption a f g) -> Dyn (DPair a f) String -> SVGElemD a f g
 
-doubleToString : Double -> String
-doubleToString = show
-
 namespace Dependent
   export
   (>$<) : ((x:a) -> h x -> f x) -> SVGElemD a f g -> SVGElemD a h g
@@ -121,7 +118,11 @@ namespace Text
 
 export
 fill :  (IDyn d (DPair a f) String, ShapeOption o) => d -> o a f g
-fill {a} {f} {g} p = shapeAttribute a f g $ StrAttribute "fill" (getDyn p)
+fill {a} {f} {g} p = shapeAttribute a f g $ CSSAttribute "fill" (getDyn p)
+
+export
+transform : ShapeOption o => Dyn (DPair a f) Transform -> o a f g
+transform {a} {f} {g} t = shapeAttribute a f g $ transform t
 
 export
 onclickD : ShapeOption o => ((x:a) -> f x -> g x) -> o a f g
@@ -145,8 +146,7 @@ namespace Group
   g o f e = G o (\_,z=>f z) e
 
 export
-sG :  List (GOption a f g) ->
-        List (SVGElemD a f g) -> SVGElemD a f g
+sG :  List (GOption a f g) -> List (SVGElemD a f g) -> SVGElemD a f g
 sG = SG
 
 circleOptToAttr : CircleOption a f g -> Attribute a f g

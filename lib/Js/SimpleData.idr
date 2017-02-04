@@ -126,13 +126,15 @@ export
 encodeJS : (a:SDataTy) -> ISDataTy a -> JS_IO Ptr
 encodeJS SString s = pure $ believe_me s
 encodeJS SUnit () = jscall "null" (() -> JS_IO Ptr) ()
-encodeJS (SList _) [] = jscall "[]" (() -> JS_IO Ptr) ()
-encodeJS (SList x) (t::r) =
+--encodeJS (SList _) [] = jscall "[]" (() -> JS_IO Ptr) ()
+encodeJS (SList x) xs =
   do
-    z <- encodeJS x t
-    w <- encodeJS (SList x) r
-    jscall "%1.unshift(%0)" (Ptr -> Ptr -> JS_IO ()) z w
-    pure w
+    lstPtr <- sequence $ map (encodeJS x) xs
+    makeJSList lstPtr
+    --z <- encodeJS x t
+    --w <- encodeJS (SList x) r
+    --jscall "%1.unshift(%0)" (Ptr -> Ptr -> JS_IO ()) z w
+    --pure w
 encodeJS (STuple x y) (z, w) =
   jscall "[%0,%1]" (Ptr -> Ptr -> JS_IO Ptr) !(encodeJS x z) !(encodeJS y w)
 encodeJS (SObj []) [] =

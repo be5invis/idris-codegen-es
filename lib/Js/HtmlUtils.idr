@@ -73,6 +73,10 @@ namespace Simple
   Template {t} b c = BTemplate t (const b) (const c)
 
   public export
+  AttributeS : {t:Type} -> Type -> Type -> Type
+  AttributeS {t} b c = Attribute t (const b) (const c)
+
+  public export
   GuiRef : Type -> Type -> Type
   GuiRef b c = BGuiRef () (const b) (const c) ()
 
@@ -137,6 +141,10 @@ namespace Simple
   onchange' fn = OnChange (\_,_,x=> fn x)
 
 export
+groupAttribute : List (Attribute a f g) -> Attribute a f g
+groupAttribute = GroupAttribute
+
+export
 dynD : (DPair a f -> b) -> Dyn (DPair a f) b
 dynD x = DynA x
 
@@ -190,11 +198,6 @@ div = customNode "div"
 export
 span : List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
 span = customNode "span"
-
-
-export
-style : IDyn s (DPair a f) (List Style) => s -> Attribute a f g
-style x = StrAttribute "style" (map styleStr $ getDyn x)
 
 export
 button : IDyn c (DPair a f) String => List (Attribute a f g) -> c -> BTemplate a f g

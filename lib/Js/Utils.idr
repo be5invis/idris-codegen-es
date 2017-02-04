@@ -90,15 +90,38 @@ shuffle x =
       in shuffle' (deleteAt pos xs) (index pos xs :: ys)
 
 export
-readList : Ptr -> JS_IO (List Ptr)
-readList x =
+readJSList : Ptr -> JS_IO (List Ptr)
+readJSList x =
   do
     len <- jscall "%0.length" (Ptr -> JS_IO Int) x
     if len > 0 then
       do
         pfirst <- jscall "%0[0]" (Ptr -> JS_IO Ptr) x
         prest <- jscall "%0.slice(1)" (Ptr -> JS_IO Ptr) x
-        rest <- readList prest
+        rest <- readJSList prest
         pure $ pfirst :: rest
       else
           pure []
+
+export
+makeJSList : List Ptr -> JS_IO Ptr
+makeJSList [] = jscall "[]" (() -> JS_IO Ptr) ()
+makeJSList (x::xs) =
+  do
+    res <- makeJSList xs
+    jscall "%1.unshift(%0)" (Ptr -> Ptr -> JS_IO ()) x res
+    pure res
+
+export
+makeJSObj : List (String, Ptr) -> JS_IO Ptr
+makeJSObj [] =
+  jscall "{}" (() -> JS_IO Ptr) ()
+makeJSObj ((k,v)::xs) =
+  do
+    o <- makeJSObj xs
+    jscall "%2[%0]=%1" (String -> Ptr -> Ptr -> JS_IO ()) k v o
+    pure o
+
+export
+makeJSStringObj : List (String, String) -> JS_IO Ptr
+makeJSStringObj xs = makeJSObj $ map (\(x,y)=>(x,believe_me y)) xs

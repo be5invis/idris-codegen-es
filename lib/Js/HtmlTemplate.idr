@@ -4,18 +4,9 @@ import public Js.BrowserDom
 import Js.ASync
 import Effects
 
-public export
-data Style = MkStyle String String
-           | CompStyle (List Style)
-
-mutual
-  styleStr' : Style -> String
-  styleStr' (MkStyle k x) = k ++ ":" ++ x ++ ";"
-  styleStr' (CompStyle x) = styleStr x
-
-  export
-  styleStr : List Style -> String
-  styleStr x = foldl (\z,w => z ++ styleStr' w) "" x
+export
+doubleToString : Double -> String
+doubleToString = show
 
 
 public export
@@ -46,6 +37,23 @@ export
 IDyn (Dyn a b) a b where
   getDyn x = x
 
+export
+IDyn Integer a Double where
+  getDyn x = DynConst (fromInteger x)
+
+export
+data AnimationOption : Type where
+  Duration : Nat -> AnimationOption
+
+readAnimationOptions : List AnimationOption -> AnimationConfig
+readAnimationOptions [] = MkAnimationConfig 0 Both
+readAnimationOptions ((Duration d)::r) = record {duration = d} $ readAnimationOptions r
+
+export
+duration : Nat -> AnimationOption
+duration = Duration
+
+
 public export
 data InputType = IText
 
@@ -57,8 +65,10 @@ public export
 data Attribute : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   EventClick : ((x:a) -> f x -> g x) -> Attribute a f g
   StrAttribute : String -> Dyn (DPair a f) String -> Attribute a f g
+  CSSAttribute : String -> Dyn (DPair a f) String -> Attribute a f g
   EventLongPress : ((x:a) -> f x -> g x) -> Attribute a f g
   EventShortPress : ((x:a) -> f x -> g x) -> Attribute a f g
+  GroupAttribute : List (Attribute a f g) -> Attribute a f g
 
 public export
 data InputAttribute : (a:Type) -> (a->Type) -> (a->Type) -> (a-> Type) -> Type where
@@ -91,12 +101,11 @@ data BTemplate : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   MaybeNode : String -> List (Attribute a f g) -> ((x:a)-> f x -> Maybe (h x)) -> BTemplate a h g -> BTemplate a f g
   MapNode : ((x:a) -> g x -> h x) -> BTemplate a f g -> BTemplate a f h
   CMapNode : ((x:a) -> h x -> f x) -> BTemplate a f g -> BTemplate a h g
---  CaseNode : DecEq i => String -> List (Attribute a (const b)) -> (f : i -> Type) ->  (a->DPair i f) ->
---                          ((x:i) -> BTemplate (f x) (const b)) -> BTemplate a (const b)
 
+data AnimationTransition = CSSChange DomNode (List (String, String, String))
 
 data Update : Type -> Type where
-  MkUpdate : (a -> b) -> (b -> b -> JS_IO ()) -> Update a
+  MkUpdate : (a -> b) -> (b -> b -> JS_IO (List AnimationTransition)) -> Update a
 
 Remove : Type
 Remove = JS_IO ()
@@ -127,40 +136,52 @@ procClickIf ref gcb h () =
       else pure ()
 
 
-updateStrAttribute : DomNode -> String -> String -> String -> JS_IO ()
+updateStrAttribute : DomNode -> String -> String -> String -> JS_IO (List AnimationTransition)
 updateStrAttribute n name x1 x2 =
-  if x1 == x2 then pure ()
-    else setAttribute n (name, x2)
+  if x1 == x2 then pure []
+    else do
+      setAttribute n (name, x2)
+      pure []
 
-initAttribute : DPair a f -> DomNode -> GuiCallback a f g -> Attribute a f g -> JS_IO (Maybe (Update (DPair a f)))
+initAttribute : DPair a f -> DomNode -> GuiCallback a f g -> Attribute a f g -> JS_IO (List (Update (DPair a f)))
 initAttribute _ n gcb (EventClick h) =
   do
     registEvent (procClick gcb h) n "click" (pure ())
-    pure Nothing
+    pure []
 initAttribute _ n gcb (EventLongPress h) =
   do
     ref <- newJSIORef False
     registEvent
-      (\() => (writeJSIORef ref True >>= \_=> setTimeout (procClickIf ref gcb h ()) 1000)) n "mousedown" (pure ())
-    registEvent (\()=>(writeJSIORef ref False >>= \_=>putStr' "longmouseup")) n "mouseup" (pure ())
-    pure Nothing
+      (\() => (writeJSIORef ref True >>= \_=> setTimeout (procClickIf ref gcb h ()) 600)) n "mousedown" (pure ())
+    registEvent (\()=>writeJSIORef ref False) n "mouseup" (pure ())
+    pure []
 initAttribute _ n gcb (EventShortPress h) =
   do
     ref <- newJSIORef False
     registEvent (\() => (writeJSIORef ref True >>= \_=> setTimeout (writeJSIORef ref False) 500)) n "mousedown" (pure ())
     registEvent (procClickIf ref gcb h) n "mouseup" (pure ())
-    pure Nothing
+    pure []
 initAttribute _ n gcb (StrAttribute name (DynConst x) ) =
   do
     setAttribute n (name, x)
-    pure Nothing
+    pure []
 initAttribute v n gcb (StrAttribute name (DynA x) ) =
   do
     setAttribute n (name, x v)
-    pure $ Just $ MkUpdate x (updateStrAttribute n name)
+    pure $ [MkUpdate x (updateStrAttribute n name)]
+initAttribute v n gcb (CSSAttribute name (DynConst x)) =
+  do
+    setCSSProp n name x
+    pure []
+initAttribute v n gcb (CSSAttribute name (DynA f)) =
+  do
+    setCSSProp n name (f v)
+    pure $ [MkUpdate f (\x,y=> if x == y then pure [] else pure $ [CSSChange n [(name, x,y)]])]
+initAttribute v n gcb (GroupAttribute attrs) =
+  (join<$>) $ sequence $ map (initAttribute v n gcb) attrs
 
 initAttributes : DPair a f -> DomNode -> GuiCallback a f g -> List (Attribute a f g) -> JS_IO (List (Update (DPair a f)))
-initAttributes v n gcb attrs = (catMaybes<$>) $ sequence $ map (initAttribute v n gcb) attrs
+initAttributes v n gcb attrs = initAttribute v n gcb $ GroupAttribute attrs
 
 procSetVal : DomNode -> Maybe String -> JS_IO ()
 procSetVal _ Nothing = pure ()
@@ -168,40 +189,30 @@ procSetVal n (Just z) =
   setValue z n
 
 initAttributeInp : DPair a f -> DomNode -> GuiCallback a f g ->
-                      ((x:a) -> String -> c x) -> ((x:a) -> c x -> String) -> InputAttribute a f g c -> JS_IO (Maybe (Update (DPair a f)))
+                      ((x:a) -> String -> c x) -> ((x:a) -> c x -> String) -> InputAttribute a f g c -> JS_IO (List (Update (DPair a f)))
 initAttributeInp v n gcb _ _ (GenAttr x) =
     initAttribute v n gcb x
 initAttributeInp _ n gcb f _ (OnChange h) =
   do
     registEvent (procChange gcb f h) n "change" targetValue
-    pure Nothing
+    pure []
 initAttributeInp (x**y) n gcb _ f (SetVal h) =
   do
     procSetVal n (f x <$> h x y)
-    pure $ Just $ MkUpdate (\(x**y) => f x <$> h x y) (\_,z=> procSetVal n z)
+    pure $ [MkUpdate (\(x**y) => f x <$> h x y) (\_,z=> do procSetVal n z; pure [])]
 
 initAttributesInp : DPair a f -> DomNode -> GuiCallback a f g ->
                       ((x:a) -> String -> y x) -> ((x:a) -> y x -> String) -> List (InputAttribute a f g y) -> JS_IO (List (Update (DPair a f)))
 initAttributesInp v n gcb f j attrs =
-  (catMaybes<$>) $ sequence $ map (initAttributeInp v n gcb f j) attrs
+  (join<$>) $ sequence $ map (initAttributeInp v n gcb f j) attrs
 
 
-procUpdate : a -> a -> Update a -> JS_IO ()
+procUpdate : a -> a -> Update a -> JS_IO (List AnimationTransition)
 procUpdate old new (MkUpdate r u) =
   u (r old) (r new)
 
-procUpdates : a -> a -> Updates a -> JS_IO ()
-procUpdates oz z upds = sequence_ $ map (procUpdate oz z) upds
-
-
-setState : JSIORef (Updates b) -> JSIORef b -> Maybe b -> Maybe b -> JS_IO ()
-setState _ _ _ Nothing = pure ()
-setState ctxU ctxS _ (Just z) =
-  do
-    oz <- readJSIORef ctxS
-    writeJSIORef ctxS z
-    upds <- readJSIORef ctxU
-    procUpdates oz z upds
+procUpdates : a -> a -> Updates a -> JS_IO (List AnimationTransition)
+procUpdates oz z upds = (join <$>) $ sequence $ map (procUpdate oz z) upds
 
 
 procOnEvent : (x:a) -> f x -> r x -> (g x -> JS_IO ()) -> List (FoldAttribute a f g s r) -> JS_IO ()
@@ -286,30 +297,33 @@ mutual
   updateListTemplate : Nat -> DomNode -> GuiCallback a f g -> ((x:a) -> f x -> List (h x)) ->
                               BTemplate a h g ->
                                 List (DPair a h) -> List (DPair a h) ->
-                                  List (Remove, Updates (DPair a h)) -> JS_IO (List (Remove, Updates (DPair a h)))
+                                  List (Remove, Updates (DPair a h)) -> JS_IO (List (Remove, Updates (DPair a h)), List AnimationTransition)
   updateListTemplate pos nd gcb h t (x::xs) (y::ys) ((r,u)::us) =
     do
-      procUpdates x y u
-      us' <- updateListTemplate (S pos) nd gcb h t xs ys us
-      pure $ (r,u)::us'
+      csstru <-procUpdates x y u
+      (us', csstrus) <- updateListTemplate (S pos) nd gcb h t xs ys us
+      pure $ ((r,u)::us', csstru ++ csstrus)
   updateListTemplate pos nd gcb h t [] ys [] =
-    addListNodes pos nd gcb h t ys
+    do
+      u <- addListNodes pos nd gcb h t ys
+      pure (u,[])
   updateListTemplate pos nd gcb h t xs [] us =
     do
       removeListNodes us
-      pure []
-  updateListTemplate pos nd gcb h t _ _ _ = pure []
+      pure ([],[])
+  updateListTemplate pos nd gcb h t _ _ _ = pure ([],[])
 
 
   updateLT : DomNode -> GuiCallback a f g ->
               ((x:a) -> f x -> List (h x)) ->
                   BTemplate a h g -> JSIORef (List (Remove,Updates (DPair a h))) ->
-                    DPair a f -> DPair a f -> JS_IO ()
+                    DPair a f -> DPair a f -> JS_IO (List AnimationTransition)
   updateLT {a} {h} nd gcb genL t ctx o n =
     do
       upds <- readJSIORef ctx
-      upds' <- updateListTemplate 0 nd gcb genL t (tmplLstConv genL o) (tmplLstConv genL n) upds
+      (upds', csstr) <- updateListTemplate 0 nd gcb genL t (tmplLstConv genL o) (tmplLstConv genL n) upds
       writeJSIORef ctx upds'
+      pure csstr
 
   addListNodes : Nat -> DomNode -> GuiCallback a f g ->
                             ((x:a) -> f x -> List (h x)) ->
@@ -322,21 +336,23 @@ mutual
       pure $ us :: us'
 
   updateMaybeNode : DomNode -> GuiCallback a f g -> JSIORef (Maybe (DPair a h,Remove, Updates (DPair a h))) -> BTemplate a h g ->
-                      ((x:a)-> f x -> Maybe (h x)) -> (DPair a f) -> JS_IO ()
+                      ((x:a)-> f x -> Maybe (h x)) -> (DPair a f) -> JS_IO (List AnimationTransition)
   updateMaybeNode n gcb ref t genM (y**v) =
     case (!(readJSIORef ref), genM y v) of
       (Nothing, Just w) =>
         do
           ru <- initTemplate' n (y**w) (convertGuiCallBack (y**w) genM gcb) t
           writeJSIORef ref $ Just ((y**w),ru)
+          pure []
       (Just (_,r,_), Nothing) =>
         do
           r
           writeJSIORef ref Nothing
+          pure []
       (Just (w,_,u), Just w') =>
           procUpdates w (y**w') u
       (Nothing, Nothing) =>
-        pure ()
+        pure []
 
   removeMaybeNode : DomNode -> JSIORef (Maybe (DPair a h,Remove, Updates (DPair a h))) -> JS_IO ()
   removeMaybeNode n ref =
@@ -350,43 +366,6 @@ mutual
     do
       w <- (sequence $ map (initTemplate' n v gcb) childs)
       pure (sequence_ $ map fst w, concat $ map snd w)
-{-
-  updateCaseNode : DecEq i => DomNode -> (f : i -> Type) -> (a->DPair i f) -> JS_IO a ->
-                                (b -> JS_IO ()) -> ((x:i) -> Template (f x) (const b)) ->
-                                  JSIORef Remove -> JSIORef (DPair i (Updates . f)) -> Update a
-  updateCaseNode n f h getst proc templs ctxR ctxU =
-    MkUpdate id upd
-    where
-      updEq : (x:i) -> f x -> f x -> JS_IO ()
-      updEq x y y' =
-        do
-          (x' ** upds) <- readJSIORef ctxU
-          case decEq x x' of
-            Yes Refl => procUpdates y y' upds
-            No _ => pure ()
-
-      getTheSt : (x:i) -> (f x) -> JS_IO (DPair i f) -> JS_IO (f x)
-      getTheSt x z get =
-        do
-          (x' ** z') <- get
-          case decEq x x' of
-            Yes Refl => pure z'
-            No _ => pure z
-
-      upd' : DPair i f -> DPair i f -> JS_IO ()
-      upd' (x ** z) (x' ** z') =
-        case decEq x x' of
-          Yes Refl => updEq x z z'
-          No _ =>
-            do
-              r <- readJSIORef ctxR
-              r
-              (r', u) <- initTemplate' n z' (getTheSt x' z' (h <$> getst)) proc (templs x')
-              writeJSIORef ctxR r'
-              writeJSIORef ctxU (x' ** u)
-      upd : a -> a -> JS_IO ()
-      upd x y = upd' (h x) (h y)
--}
 
   initTemplate' : DomNode -> DPair a f -> GuiCallback a f g ->
                       BTemplate a f g -> JS_IO (Remove, Updates (DPair a f))
@@ -409,7 +388,7 @@ mutual
         DynA getter =>
           do
             setText (getter v) newn
-            pure (removeDomNode newn, MkUpdate getter (\x,y => if x ==y then pure () else setText y newn) :: attrUpds)
+            pure (removeDomNode newn, MkUpdate getter (\x,y => if x ==y then pure [] else do setText y newn; pure []) :: attrUpds)
   initTemplate' n v gcb (InputNode IText attrs) =
     do
       i <- appendNode n "input"
@@ -463,18 +442,6 @@ mutual
       ru <- initTemplate' n (x**(fn x v)) (cMapGuiCallBack fn gcb) tmpl
       pure (mapUpdates (\(x**w)=>(x**(fn x w))) ru)
 
-{-  initTemplate' n v getst proc (CaseNode tag attrs f h templs) =
-    do
-      newn <- appendNode n tag
-      attrsUpds <- initAttributes v newn getst proc attrs
-      let (i**x) = h v
-      ctxS <- newJSIORef x
-      (r, upds) <- initTemplate' newn x (readJSIORef ctxS) proc (templs i)
-      ctxUpds <- newJSIORef (i ** upds)
-      ctxR <- newJSIORef r
-      pure ( (join $ readJSIORef ctxR) >>= \_=>removeDomNode newn
-           , (updateCaseNode newn f h getst proc templs ctxR ctxUpds) :: attrsUpds)
--}
 
 export
 data BGuiRef : (a:Type) -> (a->Type) -> (a->Type)-> a -> Type where
@@ -484,12 +451,33 @@ export
 data Html : Effect where
   InitBody : f x -> BTemplate a f g -> sig Html () () (BGuiRef a f g x)
   HtmlUpdate : (f x -> f y) -> sig Html () (BGuiRef a f g x) (BGuiRef a f g y)
+  HtmlAnimate : List AnimationOption -> (f x -> f y) -> sig Html () (BGuiRef a f g x) (BGuiRef a f g y)
   GetInput : sig Html (g x) (BGuiRef a f g x)
   ConsoleLog : String -> sig Html () a
 
 public export
 HTML : (ty : Type) -> EFFECT
 HTML t = MkEff t Html
+
+applyTransition : AnimationTransition -> JS_IO ()
+applyTransition (CSSChange n l) =
+  do
+    let la = the (List (JS_IO ())) $ map (\(name,_,new)=>setCSSProp n name new) l
+    sequence_ la
+
+animTransition : AnimationConfig -> AnimationTransition -> JS_IO ()
+animTransition aConf (CSSChange n l) =
+  animateCSS aConf n [map (\(name,x,_) => (name,x)) l, map (\(name,_,x)=> (name,x)) l]
+
+doUpdates : List AnimationOption -> a -> a -> Updates a -> JS_IO ()
+doUpdates lo x y u =
+  do
+    animtrs <- procUpdates x y u
+    let animConf = readAnimationOptions lo
+    if duration animConf == 0 then
+      sequence_ $ map applyTransition animtrs
+      else
+        sequence_ $ map (animTransition animConf) animtrs
 
 
 initTemplate : DomNode -> f x -> BTemplate a f g -> JS_IO (BGuiRef a f g x)
@@ -499,10 +487,10 @@ initTemplate {a} {f} {g} {x} n v t =
     (r, upds) <- initTemplate' n (x**v) (readJSIORef gcb) t
     pure $ MkBGuiRef upds v gcb
 
-refreshTemplate : f y -> BGuiRef a f g x -> JS_IO (BGuiRef a f g y)
-refreshTemplate {x} {y} w' (MkBGuiRef upds w gcb) =
+refreshTemplate : List AnimationOption -> f y -> BGuiRef a f g x -> JS_IO (BGuiRef a f g y)
+refreshTemplate {x} {y} aOpts w' (MkBGuiRef upds w gcb) =
   do
-    procUpdates (x**w) (y**w') upds
+    doUpdates aOpts (x**w) (y**w') upds
     writeJSIORef gcb (y**(w',\_=>pure ()))
     pure $ MkBGuiRef upds w' gcb
 
@@ -511,9 +499,8 @@ readTemplate : BGuiRef a f g x -> f x
 readTemplate (MkBGuiRef _ v _) = v
 
 
-updateTemplate : (f x -> f y) -> BGuiRef a f g x -> JS_IO (BGuiRef a f g y)
-updateTemplate f r = refreshTemplate (f (readTemplate r)) r
-
+updateTemplate : List AnimationOption -> (f x -> f y) -> BGuiRef a f g x -> JS_IO (BGuiRef a f g y)
+updateTemplate aOpts f r = refreshTemplate aOpts (f (readTemplate r)) r
 
 getInputTemplate : BGuiRef a f g x -> ASync (g x)
 getInputTemplate {x} (MkBGuiRef _ v gcb) =
@@ -524,7 +511,8 @@ getInputTemplate {x} (MkBGuiRef _ v gcb) =
 export
 implementation Handler Html ASync where
   handle () (InitBody x t) k = do  b <- liftJS_IO body; r' <- liftJS_IO $ initTemplate b x t; k () r'
-  handle r (HtmlUpdate f) k = do r' <- liftJS_IO $ updateTemplate f r; k () r'
+  handle r (HtmlUpdate f) k = do r' <- liftJS_IO $ updateTemplate [] f r; k () r'
+  handle r (HtmlAnimate opts f) k = do r' <- liftJS_IO $ updateTemplate opts f r; k () r'
   handle r GetInput k = do y <- getInputTemplate r; k y r
   handle r (ConsoleLog s) k = do liftJS_IO $ putStr' s; k () r
 
@@ -540,6 +528,10 @@ initBodyM x t = call $ InitBody x t
 export
 updateGui : (f x ->  f x) -> Eff () [HTML (BGuiRef a f g x)] [HTML (BGuiRef a f g x)]
 updateGui h = call $ HtmlUpdate h
+
+export
+animateGui : List AnimationOption -> (f x ->  f x) -> Eff () [HTML (BGuiRef a f g x)] [HTML (BGuiRef a f g x)]
+animateGui opts h = call $ HtmlAnimate opts h
 
 export
 updateGuiM : (f x ->  f y) -> Eff () [HTML (BGuiRef a f g x)] [HTML (BGuiRef a f g y)]
