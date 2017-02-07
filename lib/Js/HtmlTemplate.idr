@@ -454,6 +454,7 @@ data Html : Effect where
   HtmlAnimate : List AnimationOption -> (f x -> f y) -> sig Html () (BGuiRef a f g x) (BGuiRef a f g y)
   GetInput : sig Html (g x) (BGuiRef a f g x)
   ConsoleLog : String -> sig Html () a
+  Wait : Nat -> sig Html () a
 
 public export
 HTML : (ty : Type) -> EFFECT
@@ -515,6 +516,7 @@ implementation Handler Html ASync where
   handle r (HtmlAnimate opts f) k = do r' <- liftJS_IO $ updateTemplate opts f r; k () r'
   handle r GetInput k = do y <- getInputTemplate r; k y r
   handle r (ConsoleLog s) k = do liftJS_IO $ putStr' s; k () r
+  handle r (Wait millis) k = do do setTimeout (cast millis) (); k () r 
 
 
 export
@@ -548,3 +550,7 @@ getInput = call GetInput
 export
 consoleLog : String -> Eff () [HTML a]
 consoleLog s = call $ ConsoleLog s
+
+export
+wait : Nat -> Eff () [HTML a]
+wait millis = call $ Wait millis

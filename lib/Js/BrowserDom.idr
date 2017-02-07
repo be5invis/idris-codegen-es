@@ -212,3 +212,7 @@ getHref = jscall "window.location.href" (() -> JS_IO String) ()
 export
 getHash : JS_IO String
 getHash = jscall "decodeURI(window.location.hash.substr(1))" (() -> JS_IO String) ()
+
+export
+getLocationSearch : JS_IO String
+getLocationSearch = jscall "decodeURI(window.location.search)" (() -> JS_IO String) ()

@@ -31,7 +31,8 @@ isUndefined : Ptr -> JS_IO Bool
 isUndefined x =
   do
     i <- jscall "(%0 == undefined)+0" (Ptr -> JS_IO Int) x
-    if i == 0 then pure False
+    if i == 0 then
+      pure False
       else pure True
 
 
@@ -61,6 +62,10 @@ modifyJSIORef ref f =
 export
 random : JS_IO Double
 random = jscall "Math.random()" (() -> JS_IO Double) ()
+
+export
+randomInt : Int -> JS_IO Int
+randomInt x = pure $ cast $ !random * (cast x)
 
 export
 randomInteger : Integer -> JS_IO Integer
