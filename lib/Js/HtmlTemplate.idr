@@ -62,17 +62,17 @@ InputTypeTy : InputType -> (a -> Type)
 InputTypeTy IText = const String
 
 public export
-data Attribute : (a:Type) -> (a->Type) -> (a->Type) -> Type where
-  EventClick : ((x:a) -> f x -> g x) -> Attribute a f g
-  StrAttribute : String -> Dyn (DPair a f) String -> Attribute a f g
-  CSSAttribute : String -> Dyn (DPair a f) String -> Attribute a f g
-  EventLongPress : ((x:a) -> f x -> g x) -> Attribute a f g
-  EventShortPress : ((x:a) -> f x -> g x) -> Attribute a f g
-  GroupAttribute : List (Attribute a f g) -> Attribute a f g
+data BAttribute : (a:Type) -> (a->Type) -> (a->Type) -> Type where
+  EventClick : ((x:a) -> f x -> g x) -> BAttribute a f g
+  StrAttribute : String -> Dyn (DPair a f) String -> BAttribute a f g
+  CSSAttribute : String -> Dyn (DPair a f) String -> BAttribute a f g
+  EventLongPress : ((x:a) -> f x -> g x) -> BAttribute a f g
+  EventShortPress : ((x:a) -> f x -> g x) -> BAttribute a f g
+  GroupAttribute : List (BAttribute a f g) -> BAttribute a f g
 
 public export
 data InputAttribute : (a:Type) -> (a->Type) -> (a->Type) -> (a-> Type) -> Type where
-  GenAttr : Attribute a f g -> InputAttribute a f g c
+  GenAttr : BAttribute a f g -> InputAttribute a f g c
   OnChange : ((x:a) -> f x -> c x -> g x) -> InputAttribute a f g c
   SetVal : ((x:a) -> f x -> Maybe (c x)) -> InputAttribute a f g c
 
@@ -83,22 +83,22 @@ data FoldAttribute : (a:Type) -> (a->Type) -> (a->Type) -> (a->Type) -> (a -> Ty
 
 public export
 GuiCallback : (a:Type) -> (a->Type) -> (a->Type) -> Type
-
 GuiCallback a f g = JS_IO (x:a**(f x, g x -> JS_IO ()))
+
 public export
 data BTemplate : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   CustomNode : Maybe String -> String -> (DomNode -> GuiCallback a f g -> JS_IO d, d -> JS_IO ()) ->
-                  List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
-  TextNode : Maybe String -> String -> List (Attribute a f g) -> Dyn (DPair a f) String -> BTemplate a f g
+                  List (BAttribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
+  TextNode : Maybe String -> String -> List (BAttribute a f g) -> Dyn (DPair a f) String -> BTemplate a f g
   InputNode : (t:InputType) -> List (InputAttribute a f g (InputTypeTy t)) ->
                   BTemplate a f g
   FoldNode : ((x:a) -> s x) -> ((x:a) -> s x -> i x -> (s x, Maybe (r x))) -> ((x:a) -> (y:a) -> s x -> s y) ->
                BTemplate a s i -> List (FoldAttribute a f g s r) -> BTemplate a f g
-  FormNode : ((x:a) -> f x -> g x) -> List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
-  ListNode : Maybe String -> String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
+  FormNode : ((x:a) -> f x -> g x) -> List (BAttribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
+  ListNode : Maybe String -> String -> List (BAttribute a f g) -> ((x:a) -> f x -> List (h x)) ->
                           BTemplate a h g -> BTemplate a f g
   EmptyNode : BTemplate a f g
-  MaybeNode : String -> List (Attribute a f g) -> ((x:a)-> f x -> Maybe (h x)) -> BTemplate a h g -> BTemplate a f g
+  MaybeNode : String -> List (BAttribute a f g) -> ((x:a)-> f x -> Maybe (h x)) -> BTemplate a h g -> BTemplate a f g
   MapNode : ((x:a) -> g x -> h x) -> BTemplate a f g -> BTemplate a f h
   CMapNode : ((x:a) -> h x -> f x) -> BTemplate a f g -> BTemplate a h g
 
@@ -143,7 +143,7 @@ updateStrAttribute n name x1 x2 =
       setAttribute n (name, x2)
       pure []
 
-initAttribute : DPair a f -> DomNode -> GuiCallback a f g -> Attribute a f g -> JS_IO (List (Update (DPair a f)))
+initAttribute : DPair a f -> DomNode -> GuiCallback a f g -> BAttribute a f g -> JS_IO (List (Update (DPair a f)))
 initAttribute _ n gcb (EventClick h) =
   do
     registEvent (procClick gcb h) n "click" (pure ())
@@ -180,7 +180,7 @@ initAttribute v n gcb (CSSAttribute name (DynA f)) =
 initAttribute v n gcb (GroupAttribute attrs) =
   (join<$>) $ sequence $ map (initAttribute v n gcb) attrs
 
-initAttributes : DPair a f -> DomNode -> GuiCallback a f g -> List (Attribute a f g) -> JS_IO (List (Update (DPair a f)))
+initAttributes : DPair a f -> DomNode -> GuiCallback a f g -> List (BAttribute a f g) -> JS_IO (List (Update (DPair a f)))
 initAttributes v n gcb attrs = initAttribute v n gcb $ GroupAttribute attrs
 
 procSetVal : DomNode -> Maybe String -> JS_IO ()
@@ -442,14 +442,47 @@ mutual
       ru <- initTemplate' n (x**(fn x v)) (cMapGuiCallBack fn gcb) tmpl
       pure (mapUpdates (\(x**w)=>(x**(fn x w))) ru)
 
+{-
+export
+data BGuiRef : (a:Type) -> (a->Type) -> (a->Type)-> a -> Type where
+  MkBGuiRef : Updates (DPair a f) -> JSIORef (f x) ->
+                JSIORef (g x -> JS_IO ()) ->
+                  ((z:a) -> f z -> (Double, Double) -> f z) ->
+                    BGuiRef a f g x
+-}
 
 export
 data BGuiRef : (a:Type) -> (a->Type) -> (a->Type)-> a -> Type where
-  MkBGuiRef : Updates (DPair a f) -> f x -> JSIORef (x:a**(f x, g x -> JS_IO ())) -> BGuiRef a f g x
+  MkBGuiRef : Updates (DPair a f) -> JSIORef (f x) ->
+                JSIORef (z:a ** (JSIORef (f z), g z -> JS_IO ()) ) ->
+                  JSIORef (z:a ** (JSIORef (f z))) ->
+                    BGuiRef a f g x
+
+
+emptyGCB : {a:Type} -> {f:a->Type} -> {g:a->Type} -> {x:a} -> JSIORef (f x) -> (z:a ** (JSIORef (f z), g z -> JS_IO ()) )
+emptyGCB {x} v = (x**(v, \_=>pure ()))
+
+
+-- GuiCallback a f g = JS_IO (x:a**(f x, g x -> JS_IO ()))
+getGuiCallBack : JSIORef (z:a ** (JSIORef (f z), g z -> JS_IO ()) ) -> GuiCallback a f g
+getGuiCallBack gcb' =
+  do
+    (x**(st, c)) <- readJSIORef gcb'
+    s <- readJSIORef st
+    pure (x**(s, c))
+
+
+export
+data HtmlOption : (a:Type) -> (a->Type) -> (a->Type) -> Type where
+  OnResize : ((x:a) -> f x -> (Double, Double) -> f x) -> HtmlOption a f g
+
+export
+onResize : ((x:a) -> f x -> (Double, Double) -> f x) -> HtmlOption a f g
+onResize = OnResize
 
 export
 data Html : Effect where
-  InitBody : f x -> BTemplate a f g -> sig Html () () (BGuiRef a f g x)
+  InitBody : List (HtmlOption a f g) -> f x -> BTemplate a f g -> sig Html () () (BGuiRef a f g x)
   HtmlUpdate : (f x -> f y) -> sig Html () (BGuiRef a f g x) (BGuiRef a f g y)
   HtmlAnimate : List AnimationOption -> (f x -> f y) -> sig Html () (BGuiRef a f g x) (BGuiRef a f g y)
   GetInput : sig Html (g x) (BGuiRef a f g x)
@@ -480,52 +513,84 @@ doUpdates lo x y u =
       else
         sequence_ $ map (animTransition animConf) animtrs
 
-
-initTemplate : DomNode -> f x -> BTemplate a f g -> JS_IO (BGuiRef a f g x)
-initTemplate {a} {f} {g} {x} n v t =
+onResizeFn : Updates (DPair a f) -> JSIORef (z:a ** (JSIORef (f z))) -> ((x:a) -> f x -> (Double, Double) -> f x) -> () -> JS_IO ()
+onResizeFn upds ref h () =
   do
-    gcb <- newJSIORef (x**(v,\_=>pure ()))
-    (r, upds) <- initTemplate' n (x**v) (readJSIORef gcb) t
-    pure $ MkBGuiRef upds v gcb
+    width <- jscall "window.innerWidth" (() -> JS_IO Double) ()
+    height <- jscall "window.innerHeight" (() -> JS_IO Double) ()
+    (x**sRef) <- readJSIORef ref
+    s <- readJSIORef sRef
+    let s' = h x s (width,height)
+    writeJSIORef sRef s'
+    doUpdates [] (x**s) (x**s') upds
+
+setOnResize : Updates (DPair a f) -> JSIORef (z:a ** (JSIORef (f z))) -> ((x:a) -> f x -> (Double, Double) -> f x) -> JS_IO ()
+setOnResize upds ref h =
+  do
+    onResizeFn upds ref h ()
+    jscall
+      "window.onresize = %0"
+      (JsFn (() -> JS_IO ()) -> JS_IO ())
+      (MkJsFn $ onResizeFn upds ref h)
+
+
+initOnResizeOpt : Updates (DPair a f) -> JSIORef (z:a ** (JSIORef (f z))) -> List (HtmlOption a f g) -> JS_IO ()
+initOnResizeOpt upds stRef [] = pure ()
+initOnResizeOpt upds stRef (OnResize h::_) = setOnResize upds stRef h
+initOnResizeOpt upds stRef (_::r) = initOnResizeOpt upds stRef r
+
+
+initTemplate : List (HtmlOption a f g) -> DomNode -> f x -> BTemplate a f g -> JS_IO (BGuiRef a f g x)
+initTemplate {a} {f} {g} {x} opts n v t =
+  do
+    st <- newJSIORef v
+    gcb <- newJSIORef (emptyGCB st)
+    stRef <- the (JS_IO ( JSIORef (z:a ** (JSIORef (f z))))) $ newJSIORef (x**st)
+    (r, upds) <- initTemplate' n (x**v) (getGuiCallBack gcb) t
+    initOnResizeOpt upds stRef opts
+    pure $ MkBGuiRef upds st gcb stRef
 
 refreshTemplate : List AnimationOption -> f y -> BGuiRef a f g x -> JS_IO (BGuiRef a f g y)
-refreshTemplate {x} {y} aOpts w' (MkBGuiRef upds w gcb) =
+refreshTemplate {x} {y} aOpts wv' (MkBGuiRef upds w gcb rcb) =
   do
-    doUpdates aOpts (x**w) (y**w') upds
-    writeJSIORef gcb (y**(w',\_=>pure ()))
-    pure $ MkBGuiRef upds w' gcb
+    wv <- readJSIORef w
+    doUpdates aOpts (x**wv) (y**wv') upds
+    w' <- newJSIORef wv'
+    writeJSIORef gcb (emptyGCB w')
+    writeJSIORef rcb (y**w')
+    pure $ MkBGuiRef upds w' gcb rcb
 
 
-readTemplate : BGuiRef a f g x -> f x
-readTemplate (MkBGuiRef _ v _) = v
+readTemplate : BGuiRef a f g x -> JS_IO (f x)
+readTemplate (MkBGuiRef _ v _ _) = readJSIORef v
 
 
 updateTemplate : List AnimationOption -> (f x -> f y) -> BGuiRef a f g x -> JS_IO (BGuiRef a f g y)
-updateTemplate aOpts f r = refreshTemplate aOpts (f (readTemplate r)) r
+updateTemplate aOpts f r = refreshTemplate aOpts (f !(readTemplate r)) r
 
 getInputTemplate : BGuiRef a f g x -> ASync (g x)
-getInputTemplate {x} (MkBGuiRef _ v gcb) =
+getInputTemplate {x} (MkBGuiRef _ v gcb rcb) =
   MkASync $ \proc =>
-    writeJSIORef gcb (x**(v,\w => do writeJSIORef gcb (x**(v,\_=> pure() )); proc w))
+    writeJSIORef gcb (x**(v,(\w => do writeJSIORef gcb (emptyGCB v); proc w)))
 
 
 export
 implementation Handler Html ASync where
-  handle () (InitBody x t) k = do  b <- liftJS_IO body; r' <- liftJS_IO $ initTemplate b x t; k () r'
+  handle () (InitBody opts x t) k = do  b <- liftJS_IO body; r' <- liftJS_IO $ initTemplate opts b x t; k () r'
   handle r (HtmlUpdate f) k = do r' <- liftJS_IO $ updateTemplate [] f r; k () r'
   handle r (HtmlAnimate opts f) k = do r' <- liftJS_IO $ updateTemplate opts f r; k () r'
   handle r GetInput k = do y <- getInputTemplate r; k y r
   handle r (ConsoleLog s) k = do liftJS_IO $ putStr' s; k () r
-  handle r (Wait millis) k = do do setTimeout (cast millis) (); k () r 
+  handle r (Wait millis) k = do do setTimeout (cast millis) (); k () r
 
 
 export
-initBody : b -> BTemplate () (const b) (const c) -> Eff () [HTML ()] [HTML (BGuiRef () (const b) (const c) ())]
-initBody x t = call $ InitBody x t
+initBody : List (HtmlOption () (const b) (const c)) -> b -> BTemplate () (const b) (const c) -> Eff () [HTML ()] [HTML (BGuiRef () (const b) (const c) ())]
+initBody opts x t = call $ InitBody opts x t
 
 export
-initBodyM : f x -> BTemplate a f g -> Eff () [HTML ()] [HTML (BGuiRef a f g x)]
-initBodyM x t = call $ InitBody x t
+initBodyM : List (HtmlOption a f g) -> f x -> BTemplate a f g -> Eff () [HTML ()] [HTML (BGuiRef a f g x)]
+initBodyM opts x t = call $ InitBody opts x t
 
 export
 updateGui : (f x ->  f x) -> Eff () [HTML (BGuiRef a f g x)] [HTML (BGuiRef a f g x)]

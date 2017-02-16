@@ -4,12 +4,12 @@ import Js.HtmlTemplate
 import Data.Vect
 
 export
-listCustomNS : String -> String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
+listCustomNS : String -> String -> List (BAttribute a f g) -> ((x:a) -> f x -> List (h x)) ->
                         BTemplate a h g -> BTemplate a f g
 listCustomNS x = ListNode (Just x)
 
 export
-listCustom : String -> List (Attribute a f g) -> ((x:a) -> f x -> List (h x)) ->
+listCustom : String -> List (BAttribute a f g) -> ((x:a) -> f x -> List (h x)) ->
                         BTemplate a h g -> BTemplate a f g
 listCustom = ListNode Nothing
 
@@ -17,6 +17,10 @@ namespace Dependent
   public export
   Template : (a:Type) -> (a->Type) -> (a->Type) -> Type
   Template = BTemplate
+
+  public export
+  Attribute : (a:Type) -> (a->Type) -> (a->Type) -> Type
+  Attribute = BAttribute
 
   public export
   GuiRef : (a:Type) -> (a->Type) -> (a->Type)-> a -> Type
@@ -73,8 +77,8 @@ namespace Simple
   Template {t} b c = BTemplate t (const b) (const c)
 
   public export
-  AttributeS : {t:Type} -> Type -> Type -> Type
-  AttributeS {t} b c = Attribute t (const b) (const c)
+  Attribute : {t:Type} -> Type -> Type -> Type
+  Attribute {t} b c = Attribute t (const b) (const c)
 
   public export
   GuiRef : Type -> Type -> Type

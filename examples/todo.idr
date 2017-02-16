@@ -35,7 +35,7 @@ pageLoop =
 page : Eff () [HTML ()] [HTML (Gui 0)]
 page =
   do
-    initBodyM [] vw
+    initBodyM [] [] vw
     pageLoop
 
 main : JS_IO ()

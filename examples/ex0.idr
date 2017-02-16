@@ -30,7 +30,7 @@ pageLoop =
 page : Eff () [HTML (), STATE String] [HTML Gui, STATE String]
 page =
   do
-    initBody "" vw
+    initBody [] "" vw
     pageLoop
 
 main : JS_IO ()

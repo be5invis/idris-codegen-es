@@ -1,6 +1,7 @@
 module HtmlStyle
 
 import Js.HtmlTemplate
+import Js.HtmlUtils
 import Data.Fin
 
 %access export
