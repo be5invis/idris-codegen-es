@@ -5,6 +5,9 @@ import Js.Browser
 svgNS : String
 svgNS = "http://www.w3.org/2000/svg"
 
+xlinkNS : String
+xlinkNS = "http://www.w3.org/1999/xlink"
+
 export
 interface ShapeOption (o:(a:Type) -> (f:a->Type) -> (g:a->Type) -> Type) where
   shapeAttribute : (a:Type) -> (f:a->Type) -> (g:a->Type) -> Attribute a f g -> o a f g
@@ -18,12 +21,20 @@ data RectOption : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   MkRectOption : Attribute a f g -> RectOption a f g
 
 export
+data ImageOption : (a:Type) -> (a->Type) -> (a->Type) -> Type where
+  MkImageOption : Attribute a f g -> ImageOption a f g
+
+export
 data TextOption : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   MkTextOption : Attribute a f g -> TextOption a f g
 
 export
 ShapeOption RectOption where
   shapeAttribute _ _ _ x = MkRectOption x
+
+export
+ShapeOption ImageOption where
+  shapeAttribute _ _ _ x = MkImageOption x
 
 export
 ShapeOption CircleOption where
@@ -42,6 +53,7 @@ data SVGElemD : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   CMapElem : ((x:a) -> h x -> f x) -> SVGElemD a f g -> SVGElemD a h g
   Circle : List (CircleOption a f g) -> SVGElemD a f g
   Rect : List (RectOption a f g) -> SVGElemD a f g
+  Image : List (ImageOption a f g) -> Dyn (DPair a f) String -> SVGElemD a f g
   G : List (GOption a f g) ->
         ((x:a) -> f x -> List (h x)) ->
               SVGElemD a h g -> SVGElemD a f g
@@ -70,15 +82,15 @@ namespace Circle
 
   export
   r : IDyn d (DPair a f) Double => d -> CircleOption a f g
-  r x = MkCircleOption $ StrAttribute "r" (map doubleToString $ getDyn x)
+  r x = MkCircleOption $ customStrAttr "r" (map doubleToString $ getDyn x)
 
   export
   cx : IDyn d (DPair a f) Double => d -> CircleOption a f g
-  cx x = MkCircleOption $ StrAttribute "cx" (map doubleToString $ getDyn x)
+  cx x = MkCircleOption $ customStrAttr "cx" (map doubleToString $ getDyn x)
 
   export
   cy : IDyn d (DPair a f) Double => d -> CircleOption a f g
-  cy x = MkCircleOption $ StrAttribute "cy" (map doubleToString $ getDyn x)
+  cy x = MkCircleOption $ customStrAttr "cy" (map doubleToString $ getDyn x)
 
 namespace Rect
   export
@@ -87,19 +99,40 @@ namespace Rect
 
   export
   x : IDyn d (DPair a f) Double => d -> RectOption a f g
-  x p = MkRectOption $ StrAttribute "x" (map doubleToString $ getDyn p)
+  x p = MkRectOption $ customStrAttr "x" (map doubleToString $ getDyn p)
 
   export
   y : IDyn d (DPair a f) Double => d -> RectOption a f g
-  y p = MkRectOption $ StrAttribute "y" (map doubleToString $ getDyn p)
+  y p = MkRectOption $ customStrAttr "y" (map doubleToString $ getDyn p)
 
   export
   width : IDyn d (DPair a f) Double => d -> RectOption a f g
-  width p = MkRectOption $ StrAttribute "width" (map doubleToString $ getDyn p)
+  width p = MkRectOption $ customStrAttr "width" (map doubleToString $ getDyn p)
 
   export
   height : IDyn d (DPair a f) Double => d -> RectOption a f g
-  height p = MkRectOption $ StrAttribute "height" (map doubleToString $ getDyn p)
+  height p = MkRectOption $ customStrAttr "height" (map doubleToString $ getDyn p)
+
+namespace Image
+  export
+  image : IDyn s (DPair a f) String => List (ImageOption a f g) -> s -> SVGElemD a f g
+  image opts s = Image opts (getDyn s)
+
+  export
+  x : IDyn d (DPair a f) Double => d -> ImageOption a f g
+  x p = MkImageOption $ customStrAttr "x" (map doubleToString $ getDyn p)
+
+  export
+  y : IDyn d (DPair a f) Double => d -> ImageOption a f g
+  y p = MkImageOption $ customStrAttr "y" (map doubleToString $ getDyn p)
+
+  export
+  width : IDyn d (DPair a f) Double => d -> ImageOption a f g
+  width p = MkImageOption $ customStrAttr "width" (map doubleToString $ getDyn p)
+
+  export
+  height : IDyn d (DPair a f) Double => d -> ImageOption a f g
+  height p = MkImageOption $ customStrAttr "height" (map doubleToString $ getDyn p)
 
 namespace Text
   export
@@ -108,11 +141,11 @@ namespace Text
 
   export
   x : IDyn d (DPair a f) Double => d -> TextOption a f g
-  x p = MkTextOption $ StrAttribute "x" (map doubleToString $ getDyn p)
+  x p = MkTextOption $ customStrAttr "x" (map doubleToString $ getDyn p)
 
   export
   y : IDyn d (DPair a f) Double => d -> TextOption a f g
-  y p = MkTextOption $ StrAttribute "y" (map doubleToString $ getDyn p)
+  y p = MkTextOption $ customStrAttr "y" (map doubleToString $ getDyn p)
 
 
 
@@ -155,6 +188,9 @@ circleOptToAttr (MkCircleOption x) = x
 rectOptToAttr : RectOption a f g -> Attribute a f g
 rectOptToAttr (MkRectOption x) = x
 
+imageOptToAttr : ImageOption a f g -> Attribute a f g
+imageOptToAttr (MkImageOption x) = x
+
 gOptToAttr : GOption a f g -> Attribute a f g
 gOptToAttr (MkGOption x) = x
 
@@ -169,6 +205,8 @@ svgToTempl (Circle opts) =
   customNodeNS svgNS "circle" (map circleOptToAttr opts) []
 svgToTempl (Rect opts) =
   customNodeNS svgNS "rect" (map rectOptToAttr opts) []
+svgToTempl (Image opts url) =
+  customNodeNS svgNS "image" (customStrAttrNS xlinkNS "xlink:href" url :: map imageOptToAttr opts) []
 svgToTempl (G opts fn childT) =
   listCustomNS svgNS "g" (map gOptToAttr opts) fn (svgToTempl childT)
 svgToTempl (SG opts childs) =

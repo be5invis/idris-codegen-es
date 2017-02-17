@@ -64,7 +64,7 @@ InputTypeTy IText = const String
 public export
 data BAttribute : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   EventClick : ((x:a) -> f x -> g x) -> BAttribute a f g
-  StrAttribute : String -> Dyn (DPair a f) String -> BAttribute a f g
+  StrAttribute : Maybe String -> String -> Dyn (DPair a f) String -> BAttribute a f g
   CSSAttribute : String -> Dyn (DPair a f) String -> BAttribute a f g
   EventLongPress : ((x:a) -> f x -> g x) -> BAttribute a f g
   EventShortPress : ((x:a) -> f x -> g x) -> BAttribute a f g
@@ -136,11 +136,11 @@ procClickIf ref gcb h () =
       else pure ()
 
 
-updateStrAttribute : DomNode -> String -> String -> String -> JS_IO (List AnimationTransition)
-updateStrAttribute n name x1 x2 =
+updateStrAttribute : Maybe String -> DomNode -> String -> String -> String -> JS_IO (List AnimationTransition)
+updateStrAttribute ns n name x1 x2 =
   if x1 == x2 then pure []
     else do
-      setAttribute n (name, x2)
+      setAttributeNS ns n (name, x2)
       pure []
 
 initAttribute : DPair a f -> DomNode -> GuiCallback a f g -> BAttribute a f g -> JS_IO (List (Update (DPair a f)))
@@ -161,14 +161,14 @@ initAttribute _ n gcb (EventShortPress h) =
     registEvent (\() => (writeJSIORef ref True >>= \_=> setTimeout (writeJSIORef ref False) 500)) n "mousedown" (pure ())
     registEvent (procClickIf ref gcb h) n "mouseup" (pure ())
     pure []
-initAttribute _ n gcb (StrAttribute name (DynConst x) ) =
+initAttribute _ n gcb (StrAttribute ns name (DynConst x) ) =
   do
-    setAttribute n (name, x)
+    setAttributeNS ns n (name, x)
     pure []
-initAttribute v n gcb (StrAttribute name (DynA x) ) =
+initAttribute v n gcb (StrAttribute ns name (DynA x) ) =
   do
-    setAttribute n (name, x v)
-    pure $ [MkUpdate x (updateStrAttribute n name)]
+    setAttributeNS ns n (name, x v)
+    pure $ [MkUpdate x (updateStrAttribute ns n name)]
 initAttribute v n gcb (CSSAttribute name (DynConst x)) =
   do
     setCSSProp n name x

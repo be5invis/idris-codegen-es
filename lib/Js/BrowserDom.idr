@@ -129,9 +129,13 @@ insertNodePos tag node@(MkDomNode y) pos =
       Just (MkDomNode z) => MkDomNode <$> insertBeforeNode y !(createElement tag) z
 
 export
+setAttributeNS : Maybe String -> DomNode -> (String, String) -> JS_IO ()
+setAttributeNS ns (MkDomNode n) attr =
+    setAttr ns n attr
+
+export
 setAttribute : DomNode -> (String, String) -> JS_IO ()
-setAttribute (MkDomNode n) attr =
-    setAttr n attr
+setAttribute = setAttributeNS Nothing
 
 export
 removeAttribute : DomNode -> String -> JS_IO ()

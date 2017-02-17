@@ -192,8 +192,16 @@ customNodeNS : String -> String -> List (Attribute a f g) -> List (BTemplate a f
 customNodeNS ns t = CustomNode (Just ns) t (\_,_=>pure (),\_=>pure ())
 
 export
+customStrAttr : String -> Dyn (DPair a f) String -> BAttribute a f g
+customStrAttr = StrAttribute Nothing
+
+export
+customStrAttrNS : String -> String -> Dyn (DPair a f) String -> BAttribute a f g
+customStrAttrNS x = StrAttribute (Just x)
+
+export
 img : IDyn u (DPair a f) String => List (Attribute a f g) -> u -> BTemplate a f g
-img attrs url = customNode "img" (StrAttribute "src" (getDyn url) ::attrs) []
+img attrs url = customNode "img" (customStrAttr "src" (getDyn url) ::attrs) []
 
 export
 div : List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
