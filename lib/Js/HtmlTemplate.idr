@@ -4,21 +4,9 @@ import public Js.BrowserDom
 import Js.ASync
 import Effects
 
-export
-doubleToString : Double -> String
-doubleToString = show
-
 
 public export
 data Dyn a b = DynConst b | DynA (a->b)
-
-public export
-interface IDyn c a b where
-  getDyn : c -> Dyn a b
-
-export
-IDyn b a b where
-  getDyn x = DynConst x
 
 export
 Functor (Dyn a) where
@@ -32,14 +20,6 @@ Applicative (Dyn a) where
   (<*>) (DynConst f) fa = f <$> fa
   (<*>) (DynA f) (DynA fa) = DynA (\x => (f x) (fa x))
   (<*>) (DynA f) (DynConst fa) = DynA (\x => (f x) fa)
-
-export
-IDyn (Dyn a b) a b where
-  getDyn x = x
-
-export
-IDyn Integer a Double where
-  getDyn x = DynConst (fromInteger x)
 
 export
 data AnimationOption : Type where

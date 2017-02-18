@@ -9,7 +9,7 @@ data TodoAction : Nat -> Type where
 
 vw : Template Nat (\n=> Vect n String) (\n=>TodoAction n)
 vw = div [] [ bform [onsubmit (\_,_,x => TodoAdd x)] textform
-            , vectOnDivIndex [] id (\_,x=>x) (div [] [button [onclick (\_,x => TodoRemove $ fst x)] "x", text [] (dynD $ \(_**(_,s))=>s)])
+            , vectOnDivIndex [] id (\_,x=>x) (div [] [button [onclick (\_,x => TodoRemove $ fst x)] "x", textD [] (\(_**(_,s))=>s)])
             ]
 
 Gui : Nat -> Type

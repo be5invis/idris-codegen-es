@@ -149,14 +149,6 @@ groupAttribute : List (Attribute a f g) -> Attribute a f g
 groupAttribute = GroupAttribute
 
 export
-dynD : (DPair a f -> b) -> Dyn (DPair a f) b
-dynD x = DynA x
-
-export
-dyn : (c -> b) -> Dyn (DPair a (const c)) b
-dyn x = DynA (\(_**y)=> x y)
-
-export
 textinput : List (InputAttribute a f g (const String)) ->
                 BTemplate a f g
 textinput = InputNode IText
@@ -170,8 +162,16 @@ customText : String -> List (Attribute a f g) -> Dyn (DPair a f) String -> BTemp
 customText = TextNode Nothing
 
 export
-text : IDyn t (DPair a f) String => List (Attribute a f g) -> t -> BTemplate a f g
-text attrs txt = customText "span" attrs (getDyn txt)
+text : List (Attribute a f g) -> String -> Template a f g
+text attrs txt = customText "span" attrs (DynConst txt)
+
+export
+textF : {t:Type} -> List (Attribute t (const a) (const b)) -> (a -> String) -> Template t (const a) (const b)
+textF attrs txt = customText "span" attrs (DynA $ \(_**x)=> txt x)
+
+export
+textD : List (Attribute a f g) -> (DPair a f -> String) -> Template a f g
+textD attrs txt = customText "span" attrs (DynA txt)
 
 export
 customNodeWidthPostProc : String -> (DomNode -> GuiCallback a f g -> JS_IO d, d -> JS_IO ()) ->
@@ -200,8 +200,12 @@ customStrAttrNS : String -> String -> Dyn (DPair a f) String -> BAttribute a f g
 customStrAttrNS x = StrAttribute (Just x)
 
 export
-img : IDyn u (DPair a f) String => List (Attribute a f g) -> u -> BTemplate a f g
-img attrs url = customNode "img" (customStrAttr "src" (getDyn url) ::attrs) []
+img : List (Attribute a f g) -> String -> Template a f g
+img attrs url = customNode "img" (customStrAttr "src" (DynConst url) ::attrs) []
+
+export
+imgF : {t:Type} -> List (Attribute t (const a) (const b) ) -> (a->String) -> Template t (const a) (const b)
+imgF attrs url = customNode "img" (customStrAttr "src" (DynA $ \(_**x)=> url x) ::attrs) []
 
 export
 div : List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
@@ -212,5 +216,5 @@ span : List (Attribute a f g) -> List (BTemplate a f g) -> BTemplate a f g
 span = customNode "span"
 
 export
-button : IDyn c (DPair a f) String => List (Attribute a f g) -> c -> BTemplate a f g
+button : List (Attribute a f g) -> String -> BTemplate a f g
 button attrs x = customNode "button" attrs [text [] x]

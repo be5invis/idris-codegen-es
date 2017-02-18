@@ -12,7 +12,7 @@ Gui : Type
 Gui = GuiRef String Input
 
 vw : Template String Input
-vw = div [] [form' Set [] [textinput [onchange' Change]], text [] (dyn id)]
+vw = div [] [form' Set [] [textinput [onchange' Change]], textF [] id]
 
 pageLoop : Eff () [HTML Gui, STATE String]
 pageLoop =

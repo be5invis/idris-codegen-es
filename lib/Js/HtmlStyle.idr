@@ -6,20 +6,29 @@ import Data.Fin
 
 %access export
 
-height : IDyn d (DPair a f) Double => d -> Attribute a f g
-height x = CSSAttribute "height" (doubleToString <$> getDyn x)
+height : Double -> Attribute a f g
+height x = CSSAttribute "height" (DynConst $ show x)
 
-width : IDyn d (DPair a f) Double => d -> Attribute a f g
-width x = CSSAttribute "width" (doubleToString <$> getDyn x)
+heightF : (a->Double) -> Attribute a b
+heightF f = CSSAttribute "height" (DynA $ \(_**x) => show $ f x)
 
-margin :IDyn d (DPair a f) Double => d -> Attribute a f g
-margin x = CSSAttribute "margin" (doubleToString <$> getDyn x)
+width : Double -> Attribute a f g
+width x = CSSAttribute "width" (DynConst $ show x)
 
-padding : IDyn d (DPair a f) Double => d -> Attribute a f g
-padding x = CSSAttribute "padding" (doubleToString <$> getDyn x)
+widthF : (a->Double) -> Attribute a b
+widthF f = CSSAttribute "width" (DynA $ \(_**x) => show $ f x)
 
-backgroundColor : IDyn s (DPair a f) String => s -> Attribute a f g
-backgroundColor x = CSSAttribute "background-color" (getDyn x)
+margin : Double -> Attribute a f g
+margin x = CSSAttribute "margin" (DynConst $ show x)
+
+padding : Double -> Attribute a f g
+padding x = CSSAttribute "padding" (DynConst $ show x)
+
+backgroundColor : String -> Attribute a b
+backgroundColor x = CSSAttribute "background-color" (DynConst x)
+
+backgroundColorF : (a->String) -> Attribute a b
+backgroundColorF f = CSSAttribute "background-color" (DynA $ \(_**x)=>f x)
 
 
 public export
@@ -34,8 +43,8 @@ data FlexOption : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   MkFlexOption : Attribute a f g -> FlexOption a f g
 
 export
-direction : IDyn d (DPair a f) FlexDirection => d -> FlexOption a f g
-direction x = MkFlexOption $ CSSAttribute "flex-direction" (flexDirectionToString <$> getDyn x)
+direction : FlexDirection -> FlexOption a f g
+direction x = MkFlexOption $ CSSAttribute "flex-direction" (DynConst $ flexDirectionToString x)
 
 private
 flexOptToAttr : FlexOption a f g -> Attribute a f g
@@ -51,14 +60,14 @@ data BoxShadowOption : (a:Type) -> (a->Type) -> (a->Type) -> Type where
   HShadow : Dyn (DPair a f) Double -> BoxShadowOption a f g
   VShadow : Dyn (DPair a f) Double -> BoxShadowOption a f g
 
-blur : IDyn d (DPair a f) Double => d -> BoxShadowOption a f g
-blur x = Blur $ getDyn x
+blur : Double -> BoxShadowOption a f g
+blur x = Blur $ DynConst x
 
-hShadow : IDyn d (DPair a f) Double => d -> BoxShadowOption a f g
-hShadow x = HShadow $ getDyn x
+hShadow : Double -> BoxShadowOption a f g
+hShadow x = HShadow $ DynConst x
 
-vShadow : IDyn d (DPair a f) Double => d -> BoxShadowOption a f g
-vShadow x = VShadow $ getDyn x
+vShadow : Double -> BoxShadowOption a f g
+vShadow x = VShadow $ DynConst x
 
 private
 record BoxShadowArguments (a:Type) (f : a->Type) where
@@ -75,9 +84,9 @@ boxShadowOptionsToArgs x =
   foldl opt (MkBoxShadowArguments (pure 0) (pure 0) (pure 0) (pure 0) (pure "black")) x
   where
     opt : BoxShadowArguments a f -> BoxShadowOption a f g -> BoxShadowArguments a f
-    opt y (Blur x) = record{blur = getDyn x} y
-    opt y (HShadow x) = record{hShadow = getDyn x} y
-    opt y (VShadow x) = record{vShadow = getDyn x} y
+    opt y (Blur x) = record{blur = x} y
+    opt y (HShadow x) = record{hShadow = x} y
+    opt y (VShadow x) = record{vShadow = x} y
 
 private
 boxShadowArgsToString : Double -> Double -> Double -> Double -> String -> String
@@ -98,5 +107,8 @@ translate : Double -> Double -> Transform
 translate x y =
   MkTransform $ "translate(" ++ show x ++ "px," ++ show y ++ "px)"
 
-transform : IDyn t (DPair a f) Transform => t -> Attribute a f g
-transform x = CSSAttribute "transform" ((\(MkTransform z) => z) <$> getDyn x)
+transform : Transform -> Attribute a f g
+transform (MkTransform x) = CSSAttribute "transform" (DynConst x) -- ((\(MkTransform z) => z) <$> getDyn x)
+
+transformF : (a->Transform) -> Attribute a b
+transformF f = CSSAttribute "transform" (DynA $ \(_**x) => let (MkTransform z) = f x in z) -- ((\(MkTransform z) => z) <$> getDyn x)
