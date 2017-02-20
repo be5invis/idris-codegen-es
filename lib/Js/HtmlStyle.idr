@@ -24,7 +24,7 @@ margin x = CSSAttribute "margin" (DynConst $ show x)
 padding : Double -> Attribute a f g
 padding x = CSSAttribute "padding" (DynConst $ show x)
 
-backgroundColor : String -> Attribute a b
+backgroundColor : String -> Attribute a f g
 backgroundColor x = CSSAttribute "background-color" (DynConst x)
 
 backgroundColorF : (a->String) -> Attribute a b
@@ -112,3 +112,17 @@ transform (MkTransform x) = CSSAttribute "transform" (DynConst x) -- ((\(MkTrans
 
 transformF : (a->Transform) -> Attribute a b
 transformF f = CSSAttribute "transform" (DynA $ \(_**x) => let (MkTransform z) = f x in z) -- ((\(MkTransform z) => z) <$> getDyn x)
+
+public export
+data Position = Static | Fixed Double Double
+
+position : Position -> Attribute a f g
+position Static =
+  CSSAttribute "position" (DynConst "static")
+position (Fixed x y) =
+  groupAttribute [ CSSAttribute "position" (DynConst "fixed")
+                 , CSSAttribute "left" (DynConst $ show x)
+                 , CSSAttribute "top" (DynConst $ show x)]
+
+zIndex : Int -> Attribute a f g
+zIndex x = CSSAttribute "z-index" (DynConst $ show x)

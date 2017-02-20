@@ -46,8 +46,8 @@ namespace Dependent
   vectOnDivIndex attrs len fn t = listOnDivD attrs (\x,y => let l = fn x y in toList $ zip range l) t
 
   export
-  onclick : ((x:a) -> f x -> g x) -> Attribute a f g
-  onclick = EventClick
+  onclickD : ((x:a) -> f x -> g x) -> Attribute a f g
+  onclickD = EventClick
 
   export
   onchange : ((x:a) -> f x -> c x -> g x) -> InputAttribute a f g c
