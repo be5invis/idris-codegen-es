@@ -281,6 +281,11 @@ namespace Group
               SVGElem t (const d) (const c) -> SVGElem t (const b) (const c)
   g o f e = G o (\_,z=>f z) e
 
+
+  export
+  onclick : {t:Type} -> (b -> c) -> GOption t (const b) (const c)
+  onclick fn = MkGOption $ EventClick $ \_=>fn
+
 export
 sG :  List (GOption a f g) -> List (SVGElem a f g) -> SVGElem a f g
 sG = SG
