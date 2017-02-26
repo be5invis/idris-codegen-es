@@ -6,23 +6,27 @@ import Data.Fin
 
 %access export
 
+private
+pixels : Double -> String
+pixels x = show x ++ "px"
+
 height : Double -> Attribute a f g
-height x = CSSAttribute "height" (DynConst $ show x)
+height x = CSSAttribute "height" (DynConst $ pixels x)
 
 heightF : (a->Double) -> Attribute a b
-heightF f = CSSAttribute "height" (DynA $ \(_**x) => show $ f x)
+heightF f = CSSAttribute "height" (DynA $ \(_**x) => pixels $ f x)
 
 width : Double -> Attribute a f g
-width x = CSSAttribute "width" (DynConst $ show x)
+width x = CSSAttribute "width" (DynConst $ pixels x)
 
 widthF : (a->Double) -> Attribute a b
-widthF f = CSSAttribute "width" (DynA $ \(_**x) => show $ f x)
+widthF f = CSSAttribute "width" (DynA $ \(_**x) => pixels $ f x)
 
 margin : Double -> Attribute a f g
-margin x = CSSAttribute "margin" (DynConst $ show x)
+margin x = CSSAttribute "margin" (DynConst $ pixels x)
 
 padding : Double -> Attribute a f g
-padding x = CSSAttribute "padding" (DynConst $ show x)
+padding x = CSSAttribute "padding" (DynConst $ pixels x)
 
 backgroundColor : String -> Attribute a f g
 backgroundColor x = CSSAttribute "background-color" (DynConst x)
@@ -92,7 +96,7 @@ private
 boxShadowArgsToString : Double -> Double -> Double -> Double -> String -> String
 boxShadowArgsToString hsh vsh blr spr clr =
   unwords
-      [(show hsh) ++ "px", (show vsh) ++ "px", (show blr) ++ "px", (show spr) ++ "px", clr]
+      [pixels hsh, pixels vsh, pixels blr, pixels spr, clr]
 
 boxShadow :  List (BoxShadowOption a f g) -> Attribute a f g
 boxShadow {a} {f} x =
@@ -121,8 +125,8 @@ position Static =
   CSSAttribute "position" (DynConst "static")
 position (Fixed x y) =
   groupAttribute [ CSSAttribute "position" (DynConst "fixed")
-                 , CSSAttribute "left" (DynConst $ show x)
-                 , CSSAttribute "top" (DynConst $ show x)]
+                 , CSSAttribute "left" (DynConst $ pixels x)
+                 , CSSAttribute "top" (DynConst $ pixels x)]
 
 zIndex : Int -> Attribute a f g
 zIndex x = CSSAttribute "z-index" (DynConst $ show x)

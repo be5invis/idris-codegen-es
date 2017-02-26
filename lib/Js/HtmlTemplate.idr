@@ -43,7 +43,7 @@ InputTypeTy IText = const String
 
 public export
 data BAttribute : (a:Type) -> (a->Type) -> (a->Type) -> Type where
-  EventClick : ((x:a) -> f x -> g x) -> BAttribute a f g
+  UnitEvent : String -> ((x:a) -> f x -> g x) -> BAttribute a f g
   StrAttribute : Maybe String -> String -> Dyn (DPair a f) String -> BAttribute a f g
   CSSAttribute : String -> Dyn (DPair a f) String -> BAttribute a f g
   EventLongPress : ((x:a) -> f x -> g x) -> BAttribute a f g
@@ -124,9 +124,9 @@ updateStrAttribute ns n name x1 x2 =
       pure []
 
 initAttribute : DPair a f -> DomNode -> GuiCallback a f g -> BAttribute a f g -> JS_IO (List (Update (DPair a f)))
-initAttribute _ n gcb (EventClick h) =
+initAttribute _ n gcb (UnitEvent name h) =
   do
-    registEvent (procClick gcb h) n "click" (pure ())
+    registEvent (procClick gcb h) n name (pure ())
     pure []
 initAttribute _ n gcb (EventLongPress h) =
   do

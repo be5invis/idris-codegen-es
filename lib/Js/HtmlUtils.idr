@@ -47,7 +47,7 @@ namespace Dependent
 
   export
   onclickD : ((x:a) -> f x -> g x) -> Attribute a f g
-  onclickD = EventClick
+  onclickD = UnitEvent "click"
 
   export
   onchange : ((x:a) -> f x -> c x -> g x) -> InputAttribute a f g c
@@ -102,7 +102,7 @@ namespace Simple
 
   export
   onclick : {t:Type} -> (b -> c) -> Attribute t (const b) (const c)
-  onclick fn = EventClick (\_,y=>fn y)
+  onclick fn = onclickD (\_,y=>fn y)
 
   export
   onShortPress : {t:Type} -> (b -> c) -> Attribute t (const b) (const c)

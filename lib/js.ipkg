@@ -20,3 +20,4 @@ modules = Js.ASync
         , Js.SimpleData
         , Js.RethinkDB
         , Js.Typeable
+	, Js.Cordova

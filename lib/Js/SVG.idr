@@ -262,11 +262,11 @@ transformSVGF {a} {b} {c} t = shapeAttribute a (const b) (const c) $ transformF 
 
 export
 onclickD : ShapeOption o => ((x:a) -> f x -> g x) -> o a f g
-onclickD {a} {f} {g} fn = shapeAttribute a f g $ EventClick fn
+onclickD {a} {f} {g} fn = shapeAttribute a f g $ onclickD fn
 
 export
 onclick : ShapeOption o => {t:Type} -> (b -> c) -> o t (const b) (const c)
-onclick {t} {b} {c} fn = shapeAttribute t (const b) (const c) $ EventClick (\_=>fn)
+onclick {t} {b} {c} fn = shapeAttribute t (const b) (const c) $ onclick fn
 
 namespace Group
   export
@@ -283,8 +283,13 @@ namespace Group
 
 
   export
+  onclickD :{a:Type} -> {f:a->Type} -> {g:a->Type} -> ((x:a) -> f x -> g x) -> BGOption a f g
+  onclickD fn = MkGOption $ onclickD $ fn
+
+
+  export
   onclick : {t:Type} -> (b -> c) -> GOption t (const b) (const c)
-  onclick fn = MkGOption $ EventClick $ \_=>fn
+  onclick fn = MkGOption $ onclick fn
 
 export
 sG :  List (GOption a f g) -> List (SVGElem a f g) -> SVGElem a f g
