@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveDataTypeable, OverloadedStrings #-}
 
 module IRTS.JsAST( JsAST(..)
                  , jsAst2Text
@@ -6,17 +6,18 @@ module IRTS.JsAST( JsAST(..)
 
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Data
 
 data JsAST = JsEmpty
            | JsNull
            | JsFun Text [Text] JsAST
            | JsReturn JsAST
            | JsApp Text [JsAST]
-           | JsAppTrampoline Text [JsAST]
            | JsMethod JsAST Text [JsAST]
            | JsVar Text
            | JsSeq JsAST JsAST
            | JsDecVar Text JsAST
+           | JsSetVar Text JsAST
            | JsArrayProj JsAST JsAST
            | JsInt Int
            | JsInteger Integer
@@ -30,8 +31,9 @@ data JsAST = JsEmpty
            | JsAFun [Text] JsAST
            | JsB2I JsAST
            | JsAppIfDef Text JsAST
-           | JsCallTrampoline JsAST
-            deriving (Show, Eq)
+           | JsWhileTrue JsAST
+           | JsContinue
+            deriving (Show, Eq, Data, Typeable)
 
 
 indent :: Text -> Text
@@ -49,14 +51,14 @@ jsAst2Text (JsFun name args body) =
            , "}\n"
            ]
 jsAst2Text (JsReturn x) = T.concat [ "return ", jsAst2Text x]
-jsAst2Text (JsApp name args) = T.concat ["idris_trampoline(",name, "(", T.intercalate ", " $ map jsAst2Text args, "))"]
-jsAst2Text (JsAppTrampoline name args) =
+jsAst2Text (JsApp name args) = T.concat [name, "(", T.intercalate ", " $ map jsAst2Text args, ")"]
+{-jsAst2Text (JsAppTrampoline name args) =
   T.concat [ "{call_trampoline_idrisjs:"
            , name
            , ",args:["
            , T.intercalate ", " $ map jsAst2Text args
            , "]}"
-           ]
+           ]-}
 jsAst2Text (JsMethod obj name args) =
   T.concat [ jsAst2Text obj
            , "."
@@ -65,8 +67,11 @@ jsAst2Text (JsMethod obj name args) =
            , ")"
            ]
 jsAst2Text (JsVar x) = x
+jsAst2Text (JsSeq JsEmpty y) = jsAst2Text y
+jsAst2Text (JsSeq x JsEmpty) = jsAst2Text x
 jsAst2Text (JsSeq x y) = T.concat [jsAst2Text x, ";\n", jsAst2Text y]
 jsAst2Text (JsDecVar name exp) = T.concat [ "var ", name, " = ", jsAst2Text exp]
+jsAst2Text (JsSetVar name exp) = T.concat [ name, " = ", jsAst2Text exp]
 jsAst2Text (JsArrayProj i exp) = T.concat [ jsAst2Text exp, "[", jsAst2Text i, "]"]
 jsAst2Text (JsInt i) = T.pack $ show i
 jsAst2Text (JsDouble d) = T.pack $ show d
@@ -87,7 +92,8 @@ jsAst2Text (JsForeign code args) =
   let args_repl c i [] = c
       args_repl c i (t:r) = args_repl (T.replace ("%" `T.append` T.pack (show i)) t c) (i+1) r
   in T.concat ["(", args_repl code 0 (map jsAst2Text args), ")"]
-jsAst2Text (JsAFun l body) = T.concat ["(function(", T.intercalate ", " l, "){", jsAst2Text body, "})"]
+jsAst2Text (JsAFun l body) =
+  T.concat ["(function(", T.intercalate ", " l, "){", jsAst2Text body, "})"]
 jsAst2Text (JsB2I x) = jsAst2Text $ JsBinOp "+" x (JsInt 0)
 jsAst2Text (JsAppIfDef n x) =
   T.concat [ "(function(a){if( a instanceof Array){return "
@@ -96,7 +102,13 @@ jsAst2Text (JsAppIfDef n x) =
            , jsAst2Text x
            , ")"
            ]
-jsAst2Text (JsCallTrampoline x) = T.concat ["idris_trampoline(", jsAst2Text x, ")"]
+jsAst2Text (JsWhileTrue x) =
+  T.concat [ "while(true){\n"
+           , indent $ jsAst2Text x
+           , "}\n"
+           ]
+jsAst2Text JsContinue =
+  "continue"
 
 case2Text :: (JsAST, JsAST) -> Text
 case2Text (x,y) =
