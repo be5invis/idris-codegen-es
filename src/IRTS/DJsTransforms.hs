@@ -92,10 +92,6 @@ inlineFnExp :: Name -> [Name] -> DExp -> DExp -> State Int DExp
 inlineFnExp n args def ex =
   do
     argNames <- getNewNames $ length args
-  -- let  maxLoc = maximum $ (0:[i | Loc i <- universeBi ex])
-      --maxLocAfter = maxLoc + 2 + (maximum $ (0:[i | Loc i <- universeBi def]))
-      --afterRenames = transformBi (renameLoc (maxLoc + 1)) def
-  --    argNames = map (DV . Loc) [maxLocAfter..(length args -1)]
     pure $ transform (f argNames) ex
   where
     replaceArgs reps x@(DV (Glob n')) =

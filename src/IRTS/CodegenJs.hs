@@ -23,6 +23,7 @@ import Data.List (nub)
 import System.Directory (doesFileExist)
 import System.FilePath (combine)
 import Control.Monad.Trans.State
+import System.Environment
 
 get_include :: FilePath -> IO Text
 get_include p = TIO.readFile p
@@ -38,11 +39,13 @@ genMaps x =
 
 codegenJs :: CodeGenerator
 codegenJs ci = do
+  optim <- lookupEnv "IDRISJS_OPTIM"
+  if optim == Just "Y" then putStrLn "compiling width idris-js optimizations" else putStrLn "compiling widthout idris-js optimizations"
   let decls             = defunDecls ci
       (funMap', conMap) = genMaps decls
       funMap            = inlineCons funMap' conMap
       used              = removeUnused funMap [sMN 0 "runMain"]
-      inlined           = inline used
+      inlined           = if optim == Just "Y" then inline used else used
       out               = T.intercalate "\n" $ map (doCodegen conMap) (Map.toList inlined)
   includes <- get_includes $ includes ci
   TIO.writeFile (outputFile ci) $ T.concat [ "(function(){\n\n"
@@ -116,7 +119,7 @@ cgFun decls n args def =
                                        , isTailRec = False
                                        }
                           )
-      body = if isTailRec st then JsWhileTrue $ JsSeq (seqJs decs) res
+      body = if isTailRec st then JsWhileTrue $ (seqJs decs) `JsSeq` res `JsSeq` JsBreak
                 else JsSeq (seqJs decs) res
   in JsFun fnName argNames $ body
 
@@ -147,7 +150,10 @@ cgBody rt (DApp _ f args) =
       (True, ReturnBT) ->
         do
           put $ st {isTailRec = True}
-          pure (preDecs ++ (map (\(n,v) -> JsSetVar n v) (zip argN (map snd z))), JsContinue)
+          vars <- sequence $ map (\_->getNewCGName) argN
+          let calcs = map (\(n,v) -> JsDecVar n v) (zip vars (map snd z))
+          let calcsToArgs = map (\(n,v) -> JsSetVar n (JsVar v)) (zip argN vars)
+          pure (preDecs ++ calcs ++ calcsToArgs,  JsContinue)
       _ ->
         pure $ (preDecs, addRT rt $ JsApp (jsName f) (map snd z))
 cgBody rt (DLet n v sc) =
@@ -155,6 +161,11 @@ cgBody rt (DLet n v sc) =
     (d1, v1) <- cgBody (DecVarBT $ jsName n) v
     (d2, v2) <- cgBody rt sc
     pure $ ((d1 ++ v1 : d2), v2 )
+cgBody rt (DUpdate n ex) =
+    do
+      (d1, v1) <- cgBody GetExpBT ex
+      let nm = jsName n
+      pure $ (d1 ++ [JsSetVar nm v1], addRT rt $ JsVar nm)
 cgBody rt (DProj e i) =
   do
     (d, v) <- cgBody GetExpBT e
@@ -188,7 +199,7 @@ cgBody rt (DOp op args) =
     z <- mapM (cgBody GetExpBT) args
     pure $ (concat $ map fst z, addRT rt $ cgOp op (map snd z))
 cgBody rt DNothing = pure ([], addRT rt JsNull)
-cgBody rt (DError x) = pure ([JsError $ T.pack $ x], addRT rt JsNull)
+cgBody rt (DError x) = pure ([JsError $ JsStr $ T.pack $ x], addRT rt JsNull)
 cgBody rt x@(DForeign dres (FStr code) args ) =
   do
     z <- mapM (cgBody GetExpBT) (map snd args)
@@ -297,4 +308,5 @@ cgOp LWriteStr [_,str] = JsApp "console.log" [str]
 cgOp LStrConcat [l,r] = JsBinOp "+" l r
 cgOp LStrCons [l,r] = JsForeign "String.fromCharCode(%0) + %1" [l,r]
 cgOp (LSRem (ATInt _)) [l,r] = JsBinOp "%" l r
+cgOp LCrash [l] = JsErrorExp l
 cgOp op exps = error ("Operator " ++ show (op, exps) ++ " not implemented")

@@ -3,6 +3,8 @@ module Js.Typeable
 import Pruviloj.Core
 import Data.Vect
 
+%language ElabReflection
+
 public export
 data TypeRep : Type -> Type where
   TRString : TypeRep String

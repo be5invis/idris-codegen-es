@@ -25,7 +25,8 @@ data JsAST = JsEmpty
            | JsStr Text
            | JsArray [JsAST]
            | JsSwitchCase JsAST [(JsAST, JsAST)] (Maybe JsAST)
-           | JsError Text
+           | JsError JsAST
+           | JsErrorExp JsAST
            | JsBinOp Text JsAST JsAST
            | JsForeign Text [JsAST]
            | JsAFun [Text] JsAST
@@ -33,6 +34,7 @@ data JsAST = JsEmpty
            | JsAppIfDef Text JsAST
            | JsWhileTrue JsAST
            | JsContinue
+           | JsBreak
             deriving (Show, Eq, Data, Typeable)
 
 
@@ -85,7 +87,9 @@ jsAst2Text (JsSwitchCase exp l d) =
            , "}\n"
            ]
 jsAst2Text (JsError t) =
-  T.concat ["throw new Error(  ", T.pack $ show t, ")"]
+  T.concat ["throw new Error(  ", jsAst2Text t, ")"]
+jsAst2Text (JsErrorExp t) =
+  T.concat ["throw2(new Error(  ", jsAst2Text t, "))"]
 jsAst2Text (JsBinOp op a1 a2) =
   T.concat ["(", jsAst2Text a1," ", op, " ",jsAst2Text a2, ")"]
 jsAst2Text (JsForeign code args) =
@@ -109,6 +113,8 @@ jsAst2Text (JsWhileTrue x) =
            ]
 jsAst2Text JsContinue =
   "continue"
+jsAst2Text JsBreak =
+  "break"
 
 case2Text :: (JsAST, JsAST) -> Text
 case2Text (x,y) =
