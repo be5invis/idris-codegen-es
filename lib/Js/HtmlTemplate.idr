@@ -422,14 +422,6 @@ mutual
       ru <- initTemplate' n (x**(fn x v)) (cMapGuiCallBack fn gcb) tmpl
       pure (mapUpdates (\(x**w)=>(x**(fn x w))) ru)
 
-{-
-export
-data BGuiRef : (a:Type) -> (a->Type) -> (a->Type)-> a -> Type where
-  MkBGuiRef : Updates (DPair a f) -> JSIORef (f x) ->
-                JSIORef (g x -> JS_IO ()) ->
-                  ((z:a) -> f z -> (Double, Double) -> f z) ->
-                    BGuiRef a f g x
--}
 
 export
 data BGuiRef : (a:Type) -> (a->Type) -> (a->Type)-> a -> Type where
@@ -443,7 +435,6 @@ emptyGCB : {a:Type} -> {f:a->Type} -> {g:a->Type} -> {x:a} -> JSIORef (f x) -> (
 emptyGCB {x} v = (x**(v, \_=>pure ()))
 
 
--- GuiCallback a f g = JS_IO (x:a**(f x, g x -> JS_IO ()))
 getGuiCallBack : JSIORef (z:a ** (JSIORef (f z), g z -> JS_IO ()) ) -> GuiCallback a f g
 getGuiCallBack gcb' =
   do

@@ -130,3 +130,14 @@ position (Fixed x y) =
 
 zIndex : Int -> Attribute a f g
 zIndex x = CSSAttribute "z-index" (DynConst $ show x)
+
+namespace UserSelect
+
+  public export
+  data UserSelectType = Auto | None | Text | All
+
+  userSelect : UserSelectType -> Attribute a f g
+  userSelect Auto = CSSAttribute "user-select" $ DynConst "auto"
+  userSelect None = CSSAttribute "user-select" $ DynConst "none"
+  userSelect Text = CSSAttribute "user-select" $ DynConst "text"
+  userSelect All = CSSAttribute "user-select" $ DynConst "all"
