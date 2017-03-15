@@ -171,19 +171,19 @@ namespace Rect
 
   export
   width : Double -> RectOption a f g
-  width p = MkRectOption $ customStrAttr "width" (DynConst $ show p)
+  width p = MkRectOption $ customStrAttr "width" (DynConst $ show $ max 0 p)
 
   export
   widthF : (a->Double) -> RectOption a b
-  widthF f = MkRectOption $ customStrAttr "width" (DynA $ \(_**x)=> show $ f x)
+  widthF f = MkRectOption $ customStrAttr "width" (DynA $ \(_**x)=> show $ max 0 $ f x)
 
   export
   height : Double -> RectOption a f g
-  height p = MkRectOption $ customStrAttr "height" (DynConst $ show p)
+  height p = MkRectOption $ customStrAttr "height" (DynConst $ show $ max 0 p)
 
   export
   heightF : (a->Double) -> RectOption a b
-  heightF f = MkRectOption $ customStrAttr "height" (DynA $ \(_**x)=> show $ f x)
+  heightF f = MkRectOption $ customStrAttr "height" (DynA $ \(_**x)=> show $ max 0 $ f x)
 
 namespace Image
   export
