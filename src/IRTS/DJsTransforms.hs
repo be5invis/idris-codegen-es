@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable, StandaloneDeriving, OverloadedStrings #-}
+{-# LANGUAGE DeriveDataTypeable, StandaloneDeriving, OverloadedStrings, DeriveGeneric, DeriveAnyClass #-}
 
 module IRTS.DJsTransforms( inline
                          , removeUnused
@@ -8,7 +8,9 @@ module IRTS.DJsTransforms( inline
                          , Fun(..)
                          ) where
 
+import Debug.Trace
 
+import Control.DeepSeq
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Set (Set)
@@ -21,6 +23,7 @@ import Idris.Core.CaseTree
 import Data.List
 import Control.Monad.Trans.State
 
+import GHC.Generics (Generic)
 import Data.Data
 import Data.Generics.Uniplate.Data
 
@@ -39,19 +42,44 @@ deriving instance Data DExp
 deriving instance Typeable DDecl
 deriving instance Data DDecl
 
+deriving instance NFData FC
+deriving instance NFData FC'
+deriving instance NFData SpecialName
+deriving instance NFData Name
+deriving instance Generic Fun
+deriving instance NFData Fun
+deriving instance Generic DExp
+deriving instance NFData DExp
+deriving instance NFData FDesc
+deriving instance Generic FDesc
+deriving instance NFData ArithTy
+deriving instance NFData PrimFn
+deriving instance Generic LVar
+deriving instance NFData LVar
+deriving instance NFData IntTy
+deriving instance NFData NativeTy
+deriving instance NFData Const
+deriving instance Generic DAlt
+deriving instance NFData DAlt
+deriving instance NFData CaseType
 
 data Fun = Fun Name [Name] DExp deriving (Data, Typeable)
 data Con = Con Name Int Int deriving (Data, Typeable)
 
-used_functions_exp :: DExp -> [Name]
-used_functions_exp x =
-  nub $ universeBi x
+data InlinerState = InlinerState { lastInt :: Int
+                                 , callGraph :: Map Name [Name]
+                                 , funDecls :: Map Name Fun
+                                 } deriving (Generic, NFData)
+
+mapMapListKeys :: Ord k => (a->a) -> [k] -> Map k a -> Map k a
+mapMapListKeys _ [] x = x
+mapMapListKeys f (t:r) x = mapMapListKeys f r $ Map.adjust f t x
 
 used_functions :: Map Name Fun -> [Name] -> Set Name
 used_functions _ [] = Set.empty
 used_functions alldefs (next_name:rest) =
   let new_names = case Map.lookup next_name alldefs of
-                    Just (Fun _ _ e) -> filter (\x -> Map.member x alldefs) $ used_functions_exp e
+                    Just (Fun _ _ e) -> filter (\x -> Map.member x alldefs) $ getFunctionCallsInExp e
                     _                 -> []
   in Set.insert next_name $ used_functions (Map.delete next_name alldefs) (rest ++ new_names)
 
@@ -70,29 +98,53 @@ inlineCons x y =
         _ -> x
     f x = x
 
-inline :: Map Name Fun -> Map Name Fun
-inline decls =
-    let callCount = functionCalls decls
-        toInline = Map.keys $ Map.filter (==1) callCount
-        stInl = foldl' (\x y -> do z<-x; inlineFn y z) (pure decls) toInline
-    in evalState stInl 0 --foldl' (\x y -> inlineFn y x) decls toInline
+inline :: Bool -> Map Name Fun -> IO (Map Name Fun)
+inline debug decls =
+  do
+    let calls = getFunctionCallGraph decls
+    calls `deepseq` if debug then putStrLn $ "Finished calculating call graph\n" else pure ()
+    res <- inlineAll debug (InlinerState 0 calls decls)
+    pure $ funDecls res
 
-renameLoc :: Int -> LVar -> LVar
-renameLoc i (Glob x) = Glob x
-renameLoc i (Loc j) = Loc $ i + j
+inlineAll ::  Bool -> InlinerState -> IO InlinerState
+inlineAll debug st =
+  do
+    case Map.keys $ Map.filterWithKey (\k v -> length v == 1 && not (k `elem` v)) (callGraph st) of
+      t:_ ->
+        do
+          let ((), st') = runState (inlineFunction t) st
+          st' `deepseq` if debug then putStrLn $ "Finished inlining " ++ show t else pure ()
+          inlineAll debug st'
+      [] ->
+        pure st
 
-getNewNames :: Int -> State Int [Name]
+getNewNames :: Int -> State InlinerState [Name]
 getNewNames n =
   do
-    lasti <- get
-    put $ lasti + n
+    st <- get
+    let lasti = lastInt st
+    put $ st {lastInt = lasti + n}
     pure $ map (\x -> MN x "idris_js_inliner") [(lasti+1)..(lasti + n)]
 
-inlineFnExp :: Name -> [Name] -> DExp -> DExp -> State Int DExp
-inlineFnExp n args def ex =
+updateFnExp :: Name -> [Name] -> DExp -> DExp -> State InlinerState ()
+updateFnExp n args def e =
+  do
+    st <- get
+    let cleanCallGraph = mapMapListKeys (filter (/=n)) (getFunctionCallsInExp def) (callGraph st)
+    let newCallGraph =  mapMapListKeys (n:) (getFunctionCallsInExp e) cleanCallGraph
+    put $ st {callGraph = newCallGraph, funDecls = Map.insert n (Fun n args e) (funDecls st)}
+
+inlineFnOnFn :: Name -> [Name] -> DExp -> Name -> State InlinerState ()
+inlineFnOnFn n args def x =
   do
     argNames <- getNewNames $ length args
-    pure $ transform (f argNames) ex
+    st <- get
+    case Map.lookup x (funDecls st) of
+      Just (Fun _ xargs xdef) ->
+        let newXdef = transform (f argNames) xdef
+        in updateFnExp x xargs xdef newXdef
+      _ ->
+        pure ()
   where
     replaceArgs reps x@(DV (Glob n')) =
       case Map.lookup n' reps of
@@ -105,12 +157,38 @@ inlineFnExp n args def ex =
         foldl'
           (\e (n, ae) -> DLet n ae e)
           (transform (replaceArgs $ Map.fromList $ zip args (map (DV . Glob) argN)) def)
-          (zip argN args')
+          (reverse $ zip argN args')
         else x
     f _ x = x
 
-inlineFnDec :: Name -> [Name] -> DExp -> Fun -> State Int Fun
-inlineFnDec n args def (Fun b a e) = Fun b a <$> inlineFnExp n args def e
+renameForInline :: DExp -> State InlinerState DExp
+renameForInline x =
+  do
+    let lets = [ n | DLet n _ _ <- universe x]
+    let patterNames = concat $ [ ns | DConCase _ _ ns _ <- universeBi x]
+    let allNames = lets ++ patterNames
+    newNames <- getNewNames $ length allNames
+    let dic = Map.fromList $ zip allNames newNames
+    pure $ transformBi (f dic) x
+  where
+    f d x =
+      case Map.lookup x d of
+        Nothing -> x
+        Just z -> z
+
+inlineFunction :: Name -> State InlinerState ()
+inlineFunction n =
+  do
+    st <- get
+    case (Map.lookup n (callGraph st), Map.lookup n (funDecls st)) of
+      (Just x, Just (Fun _ args def)) ->
+        do
+          def' <- renameForInline def
+          mapM_ (\z -> inlineFnOnFn n args def' z) x
+      _ ->
+        pure ()
+
+
 
 isRecursive :: Name -> DExp -> Bool
 isRecursive n ex = n `elem` universeBi ex
@@ -118,21 +196,12 @@ isRecursive n ex = n `elem` universeBi ex
 isTailRecursive :: Name -> DExp -> Bool
 isTailRecursive n ex = n `elem` [ n' | DApp True n' _ <- universe ex]
 
-inlineFn :: Name -> Map Name Fun -> State Int (Map Name Fun)
-inlineFn n decls =
-  case Map.lookup n decls of
-    Just (Fun _ args def) ->
-      do
-        afterInlne <- sequence $ Map.map (inlineFnDec n args def) decls
-        if isRecursive n def then
-            pure afterInlne
-          else pure $ Map.delete n afterInlne
-    _ -> pure decls
+getFunctionCallsInExp :: DExp -> [Name]
+getFunctionCallsInExp e = [ n | DApp _ n _ <- universe e]
 
-
-functionCalls :: Map Name Fun -> Map Name Int
-functionCalls decls =
+getFunctionCallGraph :: Map Name Fun -> Map Name [Name]
+getFunctionCallGraph decls =
   Map.foldl' (\x v -> procDecl v x) Map.empty decls
   where
-    procDecl :: Fun -> Map Name Int -> Map Name Int
-    procDecl (Fun _ _ e) x = foldl' (\counts z -> Map.insertWith (+) z 1 counts) x (universeBi e)
+    procDecl :: Fun -> Map Name [Name] -> Map Name [Name]
+    procDecl (Fun nf _ e) x = foldl' (\calls z -> Map.insertWith (++) z [nf] calls) x (getFunctionCallsInExp e) -- (universeBi e)

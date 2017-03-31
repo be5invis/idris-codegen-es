@@ -30,6 +30,7 @@ Executable idris-codegen-js
                 , transformers
                 , text
                 , uniplate
+                , deepseq
 
   other-modules: IRTS.CodegenJs
 

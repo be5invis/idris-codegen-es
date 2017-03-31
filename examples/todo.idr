@@ -20,8 +20,9 @@ lenAfterAction n (TodoAdd _) = S n
 lenAfterAction (S n) (TodoRemove _) = n
 
 procAct : (a:TodoAction n) -> Eff () [HTML (Gui n)] [HTML (Gui (lenAfterAction n a))]
-procAct {n} (TodoAdd s) =
-  updateGuiM (s::)
+procAct (TodoAdd s) =
+  do
+    updateGuiM (s::)
 procAct {n=S m} (TodoRemove i) =
   updateGuiM (deleteAt i)
 

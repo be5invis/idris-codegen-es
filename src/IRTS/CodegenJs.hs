@@ -2,6 +2,7 @@
 
 module IRTS.CodegenJs(codegenJs) where
 
+import Control.DeepSeq
 import IRTS.CodegenCommon
 import IRTS.Lang
 import IRTS.Defunctionalise
@@ -37,25 +38,37 @@ genMaps :: [(Name, DDecl)] -> (Map Name Fun, Map Name Con)
 genMaps x =
   (Map.fromList [(n, Fun n a e) | (_,DFun n a e) <- x ], Map.fromList [ (n,Con n i j) | (_, DConstructor n i j) <- x])
 
+isYes :: Maybe String -> Bool
+isYes (Just "Y") = True
+isYes (Just "y") = True
+isYes _ = False
+
+
 codegenJs :: CodeGenerator
-codegenJs ci = do
-  optim <- lookupEnv "IDRISJS_OPTIM"
-  if optim == Just "Y" then putStrLn "compiling width idris-js optimizations" else putStrLn "compiling widthout idris-js optimizations"
-  let decls             = defunDecls ci
-      (funMap', conMap) = genMaps decls
-      funMap            = inlineCons funMap' conMap
-      used              = removeUnused funMap [sMN 0 "runMain"]
-      inlined           = if optim == Just "Y" then inline used else used
-      out               = T.intercalate "\n" $ map (doCodegen conMap) (Map.toList inlined)
-  includes <- get_includes $ includes ci
-  TIO.writeFile (outputFile ci) $ T.concat [ "(function(){\n\n"
-                                           , "\"use strict\";\n\n"
-                                           , includes
-                                           , out, "\n"
-                                           , start, "\n"
-                                           , "\n\n"
-                                           , "\n}())"
-                                           ]
+codegenJs ci =
+  do
+    optim <- isYes <$> lookupEnv "IDRISJS_OPTIM"
+    debug <- isYes <$> lookupEnv "IDRISJS_DEBUG"
+    if optim then putStrLn "compiling width idris-js optimizations" else putStrLn "compiling widthout idris-js optimizations"
+    let decls = defunDecls ci
+    let (funMap', conMap) = genMaps decls
+    let funMap = inlineCons funMap' conMap
+    let used = removeUnused funMap [sMN 0 "runMain"]
+    used `deepseq` if debug then putStrLn $ "Finished removing unused" else pure ()
+    inlined <- if optim then inline debug used else pure used
+    inlined `deepseq` if debug then putStrLn $ "Finished inlining" else pure ()
+    let out = T.intercalate "\n" $ map (doCodegen conMap) (Map.toList inlined)
+    out `deepseq` if debug then putStrLn $ "Finished generating code" else pure ()
+    includes <- get_includes $ includes ci
+    TIO.writeFile (outputFile ci) $ T.concat [ "(function(){\n\n"
+                                             , "\"use strict\";\n\n"
+                                             , includes
+                                             , out, "\n"
+                                             , start, "\n"
+                                             , "\n\n"
+                                             , "\n}())"
+                                             ]
+
 throw2 = T.concat [ "var throw2 = function (x){\n"
                   , " throw x;\n"
                   , "}\n\n"
