@@ -55,7 +55,7 @@ codegenJs ci =
     let funMap = inlineCons funMap' conMap
     let used = removeUnused funMap [sMN 0 "runMain"]
     used `deepseq` if debug then putStrLn $ "Finished removing unused" else pure ()
-    inlined <- if optim then inline debug used else pure used
+    let inlined = if optim then inline used else used -- <- if optim then inline debug used else pure used
     inlined `deepseq` if debug then putStrLn $ "Finished inlining" else pure ()
     let out = T.intercalate "\n" $ map (doCodegen conMap) (Map.toList inlined)
     out `deepseq` if debug then putStrLn $ "Finished generating code" else pure ()

@@ -85,6 +85,7 @@ textform =
   where
     setV : Maybe (MError String) -> Maybe String
     setV (Just (Right s)) = Just s
+    setV (Just (Left [])) = Just ""
     setV _ = Nothing
 
     inpBox : Template (Maybe (MError String)) (MError String)

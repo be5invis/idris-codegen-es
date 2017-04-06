@@ -158,7 +158,8 @@ initAttribute v n gcb (CSSAttribute name (DynA f)) =
     setCSSProp n name (f v)
     pure $ [MkUpdate f (\x,y=> if x == y then pure [] else pure $ [CSSChange n [(name, x,y)]])]
 initAttribute v n gcb (GroupAttribute attrs) =
-  (join<$>) $ sequence $ map (initAttribute v n gcb) attrs
+  do
+    (join<$>) $ sequence $ map (initAttribute v n gcb) attrs
 
 initAttributes : DPair a f -> DomNode -> GuiCallback a f g -> List (BAttribute a f g) -> JS_IO (List (Update (DPair a f)))
 initAttributes v n gcb attrs = initAttribute v n gcb $ GroupAttribute attrs

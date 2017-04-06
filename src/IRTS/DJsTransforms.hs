@@ -67,9 +67,12 @@ data Fun = Fun Name [Name] DExp deriving (Data, Typeable)
 data Con = Con Name Int Int deriving (Data, Typeable)
 
 data InlinerState = InlinerState { lastInt :: Int
-                                 , callGraph :: Map Name [Name]
-                                 , funDecls :: Map Name Fun
+                                 --, callGraph :: Map Name [Name]
+                                 --, funDecls :: Map Name Fun
                                  } deriving (Generic, NFData)
+
+restrictKeys :: Ord k => Map k a -> Set k -> Map k a
+restrictKeys m s = Map.filterWithKey (\k _ -> k `Set.member` s) m
 
 mapMapListKeys :: Ord k => (a->a) -> [k] -> Map k a -> Map k a
 mapMapListKeys _ [] x = x
@@ -98,16 +101,22 @@ inlineCons x y =
         _ -> x
     f x = x
 
-inline :: Bool -> Map Name Fun -> IO (Map Name Fun)
-inline debug decls =
+inline :: Map Name Fun -> Map Name Fun
+inline x = evalState (inline' x) (InlinerState {lastInt = 0})
+
+inline' :: Map Name Fun -> State InlinerState (Map Name Fun)
+inline' decls =
   do
     let calls = getFunctionCallGraph decls
-    calls `deepseq` if debug then putStrLn $ "Finished calculating call graph\n" else pure ()
-    res <- inlineAll debug (InlinerState 0 calls decls)
-    pure $ funDecls res
-
-inlineAll ::  Bool -> InlinerState -> IO InlinerState
-inlineAll debug st =
+    let funsToInline = Map.keysSet $ Map.filterWithKey (\k v -> length v == 1 && not (k `elem` v)) calls
+    funsToInlineDefs <- mapM (\(Fun x y z) -> Fun x y <$> renameForInline z) $
+                            restrictKeys decls funsToInline
+    inlineFunctions funsToInlineDefs decls
+    --res <- inlineAll debug (InlinerState 0 calls decls)
+    --pure $ funDecls res
+{-
+inlineAll ::  Map Name Fun -> Map Name Fun -> State InlinerState (Map Name Fun)
+inlineAll  =
   do
     case Map.keys $ Map.filterWithKey (\k v -> length v == 1 && not (k `elem` v)) (callGraph st) of
       t:_ ->
@@ -117,6 +126,26 @@ inlineAll debug st =
           inlineAll debug st'
       [] ->
         pure st
+-}
+
+inlineFunctions :: Map Name Fun -> Map Name Fun -> State InlinerState (Map Name Fun)
+inlineFunctions toInline decls =
+  sequence $ Map.map (\(Fun x y z) -> Fun x y <$> (transformM (f toInline) z) ) decls
+  where
+    f :: Map Name Fun -> DExp -> State InlinerState DExp
+    f d x@(DApp b n argVals) =
+      case Map.lookup n d of
+        Just (Fun _ argNames def) ->
+          do
+            newNames <- getNewNames $ length argNames
+            pure $ foldl'
+                    (\e (n, ae) -> DLet n ae e)
+                    (switchNames (Map.fromList $ zip argNames newNames) def)
+                    (reverse $ zip newNames argVals)
+        _ ->
+          pure x
+    f d x = pure x
+
 
 getNewNames :: Int -> State InlinerState [Name]
 getNewNames n =
@@ -126,6 +155,7 @@ getNewNames n =
     put $ st {lastInt = lasti + n}
     pure $ map (\x -> MN x "idris_js_inliner") [(lasti+1)..(lasti + n)]
 
+{-
 updateFnExp :: Name -> [Name] -> DExp -> DExp -> State InlinerState ()
 updateFnExp n args def e =
   do
@@ -133,6 +163,7 @@ updateFnExp n args def e =
     let cleanCallGraph = mapMapListKeys (filter (/=n)) (getFunctionCallsInExp def) (callGraph st)
     let newCallGraph =  mapMapListKeys (n:) (getFunctionCallsInExp e) cleanCallGraph
     put $ st {callGraph = newCallGraph, funDecls = Map.insert n (Fun n args e) (funDecls st)}
+
 
 inlineFnOnFn :: Name -> [Name] -> DExp -> Name -> State InlinerState ()
 inlineFnOnFn n args def x =
@@ -160,6 +191,7 @@ inlineFnOnFn n args def x =
           (reverse $ zip argN args')
         else x
     f _ x = x
+-}
 
 renameForInline :: DExp -> State InlinerState DExp
 renameForInline x =
@@ -169,13 +201,18 @@ renameForInline x =
     let allNames = lets ++ patterNames
     newNames <- getNewNames $ length allNames
     let dic = Map.fromList $ zip allNames newNames
-    pure $ transformBi (f dic) x
+    pure $ switchNames dic x
+
+switchNames :: Map Name Name -> DExp -> DExp
+switchNames d z =
+  transformBi (f d) z
   where
     f d x =
       case Map.lookup x d of
         Nothing -> x
         Just z -> z
 
+{-
 inlineFunction :: Name -> State InlinerState ()
 inlineFunction n =
   do
@@ -187,7 +224,7 @@ inlineFunction n =
           mapM_ (\z -> inlineFnOnFn n args def' z) x
       _ ->
         pure ()
-
+-}
 
 
 isRecursive :: Name -> DExp -> Bool
