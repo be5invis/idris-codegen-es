@@ -112,21 +112,6 @@ inline' decls =
     funsToInlineDefs <- mapM (\(Fun x y z) -> Fun x y <$> renameForInline z) $
                             restrictKeys decls funsToInline
     inlineFunctions funsToInlineDefs decls
-    --res <- inlineAll debug (InlinerState 0 calls decls)
-    --pure $ funDecls res
-{-
-inlineAll ::  Map Name Fun -> Map Name Fun -> State InlinerState (Map Name Fun)
-inlineAll  =
-  do
-    case Map.keys $ Map.filterWithKey (\k v -> length v == 1 && not (k `elem` v)) (callGraph st) of
-      t:_ ->
-        do
-          let ((), st') = runState (inlineFunction t) st
-          st' `deepseq` if debug then putStrLn $ "Finished inlining " ++ show t else pure ()
-          inlineAll debug st'
-      [] ->
-        pure st
--}
 
 inlineFunctions :: Map Name Fun -> Map Name Fun -> State InlinerState (Map Name Fun)
 inlineFunctions toInline decls =
@@ -155,43 +140,6 @@ getNewNames n =
     put $ st {lastInt = lasti + n}
     pure $ map (\x -> MN x "idris_js_inliner") [(lasti+1)..(lasti + n)]
 
-{-
-updateFnExp :: Name -> [Name] -> DExp -> DExp -> State InlinerState ()
-updateFnExp n args def e =
-  do
-    st <- get
-    let cleanCallGraph = mapMapListKeys (filter (/=n)) (getFunctionCallsInExp def) (callGraph st)
-    let newCallGraph =  mapMapListKeys (n:) (getFunctionCallsInExp e) cleanCallGraph
-    put $ st {callGraph = newCallGraph, funDecls = Map.insert n (Fun n args e) (funDecls st)}
-
-
-inlineFnOnFn :: Name -> [Name] -> DExp -> Name -> State InlinerState ()
-inlineFnOnFn n args def x =
-  do
-    argNames <- getNewNames $ length args
-    st <- get
-    case Map.lookup x (funDecls st) of
-      Just (Fun _ xargs xdef) ->
-        let newXdef = transform (f argNames) xdef
-        in updateFnExp x xargs xdef newXdef
-      _ ->
-        pure ()
-  where
-    replaceArgs reps x@(DV (Glob n')) =
-      case Map.lookup n' reps of
-        Nothing -> x
-        Just e -> e
-    replaceArgs _ x = x
-
-    f argN x@(DApp b' n' args') =
-      if n' == n then
-        foldl'
-          (\e (n, ae) -> DLet n ae e)
-          (transform (replaceArgs $ Map.fromList $ zip args (map (DV . Glob) argN)) def)
-          (reverse $ zip argN args')
-        else x
-    f _ x = x
--}
 
 renameForInline :: DExp -> State InlinerState DExp
 renameForInline x =
@@ -211,21 +159,6 @@ switchNames d z =
       case Map.lookup x d of
         Nothing -> x
         Just z -> z
-
-{-
-inlineFunction :: Name -> State InlinerState ()
-inlineFunction n =
-  do
-    st <- get
-    case (Map.lookup n (callGraph st), Map.lookup n (funDecls st)) of
-      (Just x, Just (Fun _ args def)) ->
-        do
-          def' <- renameForInline def
-          mapM_ (\z -> inlineFnOnFn n args def' z) x
-      _ ->
-        pure ()
--}
-
 
 isRecursive :: Name -> DExp -> Bool
 isRecursive n ex = n `elem` universeBi ex

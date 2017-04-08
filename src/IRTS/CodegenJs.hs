@@ -26,6 +26,10 @@ import System.FilePath (combine)
 import Control.Monad.Trans.State
 import System.Environment
 
+import GHC.Generics (Generic)
+import Data.Data
+import Data.Generics.Uniplate.Data
+
 get_include :: FilePath -> IO Text
 get_include p = TIO.readFile p
 
@@ -220,10 +224,22 @@ cgBody rt x@(DForeign dres (FStr code) args ) =
     pure $ (concat $ map fst z, addRT rt $ cgForeignRes dres $ JsForeign (T.pack code) jsArgs)
 cgBody _ x = error $ "Instruction " ++ show x ++ " not compilable yet"
 
+{-
 conCaseToProjs :: Int -> JsAST -> [Name] -> JsAST
 conCaseToProjs _ _ [] = JsEmpty
 conCaseToProjs i v (x:xs) = JsSeq (JsDecVar (jsName x) $ JsArrayProj (JsInt i) v) $ conCaseToProjs (i+1) v xs
+-}
 
+replaceMatchVars :: JsAST -> Map Text Int -> JsAST -> JsAST
+replaceMatchVars n d z =
+  transform f z
+  where
+    f :: JsAST -> JsAST
+    f (JsVar x) =
+      case Map.lookup x d of
+        Nothing -> (JsVar x)
+        Just i -> JsArrayProj (JsInt i) n
+    f x = x
 
 altsRT :: Text -> BodyResTarget -> BodyResTarget
 altsRT rn ReturnBT = ReturnBT
@@ -246,7 +262,9 @@ cgAlts rt resName scrvar ((DConCase _ n args exp):r) =
     (d, v) <- cgBody (altsRT resName rt) exp
     (ar, def) <- cgAlts rt resName scrvar r
     conId <- getConsId n
-    let branchBody = JsSeq (conCaseToProjs 1 scrvar args) $ JsSeq (seqJs d) v
+    -- let branchBody = JsSeq (conCaseToProjs 1 scrvar args) $ JsSeq (seqJs d) v
+    let replace = replaceMatchVars scrvar (Map.fromList $ zip (map jsName args) [1..])
+    let branchBody = JsSeq (seqJs $ map replace d) (replace v)
     pure ((JsInt conId, branchBody) : ar, def)
 cgAlts _ _ _ [] =
   pure ([],Nothing)
