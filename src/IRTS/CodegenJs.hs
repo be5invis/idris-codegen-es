@@ -5,11 +5,10 @@ module IRTS.CodegenJs(codegenJs) where
 import Control.DeepSeq
 import IRTS.CodegenCommon
 import IRTS.Lang
-import IRTS.Defunctionalise
 import Idris.Core.TT
 
 import IRTS.JsAST
-import IRTS.DJsTransforms
+import IRTS.LangTransforms
 
 import Data.Maybe (fromJust)
 import Data.Text (Text)
@@ -29,6 +28,7 @@ import System.Environment
 import GHC.Generics (Generic)
 import Data.Data
 import Data.Generics.Uniplate.Data
+import Data.List
 
 get_include :: FilePath -> IO Text
 get_include p = TIO.readFile p
@@ -38,9 +38,11 @@ get_includes l = do
   incs <- mapM get_include l
   return $ T.intercalate "\n\n" incs
 
-genMaps :: [(Name, DDecl)] -> (Map Name Fun, Map Name Con)
+{-
+genMaps :: [(Name, LDecl)] -> (Map Name Fun, Map Name Con)
 genMaps x =
-  (Map.fromList [(n, Fun n a e) | (_,DFun n a e) <- x ], Map.fromList [ (n,Con n i j) | (_, DConstructor n i j) <- x])
+  (Map.fromList [(n, Fun n a e) | (_,LFun _ n a e) <- x ], Map.fromList [ (n,Con n i j) | (_, LConstructor n i j) <- x])
+-}
 
 isYes :: Maybe String -> Bool
 isYes (Just "Y") = True
@@ -54,31 +56,26 @@ codegenJs ci =
     optim <- isYes <$> lookupEnv "IDRISJS_OPTIM"
     debug <- isYes <$> lookupEnv "IDRISJS_DEBUG"
     if optim then putStrLn "compiling width idris-js optimizations" else putStrLn "compiling widthout idris-js optimizations"
-    let decls = defunDecls ci
-    let (funMap', conMap) = genMaps decls
-    let funMap = inlineCons funMap' conMap
-    let used = removeUnused funMap [sMN 0 "runMain"]
-    used `deepseq` if debug then putStrLn $ "Finished removing unused" else pure ()
-    let inlined = if optim then inline used else used -- <- if optim then inline debug used else pure used
-    inlined `deepseq` if debug then putStrLn $ "Finished inlining" else pure ()
-    let out = T.intercalate "\n" $ map (doCodegen conMap) (Map.toList inlined)
+    let dcls = Map.fromList $ liftDecls ci
+  --  let (funMap, conMap) = genMaps decls
+    --let funMap = inlineCons funMap' conMap
+    let used = used_decls dcls [sMN 0 "runMain"] --removeUnused dcls dclsMap [sMN 0 "runMain"]
+    used `deepseq` if debug then putStrLn $ "Finished calculating used:\n\n" ++ (unlines $ intersperse "" $ map show used) ++ "\n\n\n" else pure ()
+    --let inlined = if optim then inline used else used -- <- if optim then inline debug used else pure used
+    --inlined `deepseq` if debug then putStrLn $ "Finished inlining" else pure ()
+    let out = T.intercalate "\n" $ map (doCodegen dcls) used
     out `deepseq` if debug then putStrLn $ "Finished generating code" else pure ()
     includes <- get_includes $ includes ci
     TIO.writeFile (outputFile ci) $ T.concat [ "(function(){\n\n"
                                              , "\"use strict\";\n\n"
-                                             , includes
+                                             , includes, "\n"
+                                             , js_aux_defs, "\n"
                                              , out, "\n"
-                                             , start, "\n"
                                              , "\n\n"
                                              , "\n}())"
                                              ]
 
-throw2 = T.concat [ "var throw2 = function (x){\n"
-                  , " throw x;\n"
-                  , "}\n\n"
-                  ]
-
-start = T.concat [throw2,"\n\n", jsName (sMN 0 "runMain"), "();"]
+--start = T.concat [throw2,"\n\n", jsName (sMN 0 "runMain"), "();"]
 
 
 jsName :: Name -> Text
@@ -87,15 +84,19 @@ jsName n = T.pack $ "idris_" ++ concatMap jschar (showCG n)
                   | otherwise = "_" ++ show (fromEnum x) ++ "_"
 
 
-doCodegen :: Map Name Con -> (Name, Fun) -> Text
-doCodegen decls (n, Fun _ args def) =
-  jsAst2Text $ cgFun decls n args def
+doCodegen :: Map Name LDecl -> LDecl -> Text
+doCodegen dcls (LFun _ n args def) =
+  jsAst2Text $ cgFun dcls n args def
+doCodegen dcls (LConstructor n i sz) =
+  ""
+--  let args = map (T.pack . ("a"++) . show) [1..sz]
+--  in jsAst2Text $ JsCurryFun (jsName n) (args) (JsArray $ (JsInt i):(map JsVar args))
 
 seqJs :: [JsAST] -> JsAST
 seqJs [] = JsEmpty
 seqJs (x:xs) = JsSeq x (seqJs xs)
 
-data CGBodyState = CGBodyState { constructors :: Map Name Con
+data CGBodyState = CGBodyState { decls :: Map Name LDecl
                                , lastIntName :: Int
                                , currentFnNameAndArgs :: (Text, [Text])
                                , isTailRec :: Bool
@@ -113,8 +114,8 @@ getConsId :: Name -> State CGBodyState Int
 getConsId n =
     do
       st <- get
-      case Map.lookup n (constructors st) of
-        Just (Con _ conId _) -> pure conId
+      case Map.lookup n (decls st) of
+        Just (LConstructor _ conId _) -> pure conId
         _ -> error $ "ups " ++ showCG n
 
 
@@ -123,14 +124,14 @@ data BodyResTarget = ReturnBT
                    | SetVarBT Text
                    | GetExpBT
 
-cgFun :: Map Name Con -> Name -> [Name] -> DExp -> JsAST
-cgFun decls n args def =
+cgFun :: Map Name LDecl -> Name -> [Name] -> LExp -> JsAST
+cgFun dcls n args def =
   let
       fnName = jsName n
       argNames = map jsName args
       ((decs, res),st) = runState
                           (cgBody ReturnBT def)
-                          (CGBodyState { constructors=decls
+                          (CGBodyState { decls=dcls
                                        , lastIntName = 0
                                        , currentFnNameAndArgs = (fnName, argNames)
                                        , isTailRec = False
@@ -138,13 +139,13 @@ cgFun decls n args def =
                           )
       body = if isTailRec st then JsWhileTrue $ (seqJs decs) `JsSeq` res `JsSeq` JsBreak
                 else JsSeq (seqJs decs) res
-  in JsFun fnName argNames $ body
+  in JsCurryFun fnName argNames $ body
 
-getSwitchJs :: JsAST -> [DAlt] -> JsAST
+getSwitchJs :: JsAST -> [LAlt] -> JsAST
 getSwitchJs x alts =
   if any conCase alts then JsArrayProj (JsInt 0) x
     else x
-  where conCase (DConCase _ _ _ _) = True
+  where conCase (LConCase _ _ _ _) = True
         conCase _ = False
 
 addRT :: BodyResTarget -> JsAST -> JsAST
@@ -153,12 +154,12 @@ addRT (DecVarBT n) x = JsDecVar n x
 addRT (SetVarBT n) x = JsSetVar n x
 addRT GetExpBT x = x
 
-cgBody :: BodyResTarget -> DExp -> State CGBodyState ([JsAST], JsAST)
-cgBody rt (DV (Glob n)) =
+cgBody :: BodyResTarget -> LExp -> State CGBodyState ([JsAST], JsAST)
+cgBody rt (LV (Glob n)) =
   pure $ ([], addRT rt $ JsVar $ jsName n)
-cgBody rt (DApp _ f args) =
+cgBody rt (LApp _ (LV (Glob fn)) args) =
   do
-    let fname = jsName f
+    let fname = jsName fn
     st <- get
     let (currFn, argN) = currentFnNameAndArgs st
     z <- mapM (cgBody GetExpBT) args
@@ -172,28 +173,35 @@ cgBody rt (DApp _ f args) =
           let calcsToArgs = map (\(n,v) -> JsSetVar n (JsVar v)) (zip argN vars)
           pure (preDecs ++ calcs ++ calcsToArgs,  JsContinue)
       _ ->
-        pure $ (preDecs, addRT rt $ JsApp (jsName f) (map snd z))
-cgBody rt (DLet n v sc) =
+        pure $ (preDecs, addRT rt $ JsCurryApp (JsVar fname) (map snd z))
+cgBody rt (LForce (LLazyApp n args)) = cgBody rt (LApp False (LV (Glob n)) args)
+cgBody rt (LLazyApp n args) =
+  do
+    (d,v) <- cgBody ReturnBT (LApp False (LV (Glob n)) args)
+    pure ([], addRT rt $ JsLazy $ JsSeq (seqJs d) v)
+cgBody rt (LForce e) =
+  do
+    (d,v) <- cgBody GetExpBT e
+    pure (d, addRT rt $ JsForce v)
+cgBody rt (LLet n v sc) =
   do
     (d1, v1) <- cgBody (DecVarBT $ jsName n) v
     (d2, v2) <- cgBody rt sc
     pure $ ((d1 ++ v1 : d2), v2 )
-cgBody rt (DUpdate n ex) =
+{-cgBody rt (DUpdate n ex) =
     do
       (d1, v1) <- cgBody GetExpBT ex
       let nm = jsName n
-      pure $ (d1 ++ [JsSetVar nm v1], addRT rt $ JsVar nm)
-cgBody rt (DProj e i) =
+      pure $ (d1 ++ [JsSetVar nm v1], addRT rt $ JsVar nm)-}
+cgBody rt (LProj e i) =
   do
     (d, v) <- cgBody GetExpBT e
     pure $ (d, addRT rt $ JsArrayProj (JsInt $ i+1) $ v)
-cgBody rt (DC _  conId n args) =
+cgBody rt (LCon _  conId n args) =
   do
     z <- mapM (cgBody GetExpBT) args
     pure $ (concat $ map fst z, addRT rt $ JsArray (JsInt conId : map snd z))
-cgBody rt (DCase _ e alts) =
-  cgBody rt (DChkCase e alts)
-cgBody rt (DChkCase e alts) =
+cgBody rt (LCase _ e alts) =
   do
     (d,v) <- cgBody GetExpBT e
     resName <- getNewCGName
@@ -210,14 +218,18 @@ cgBody rt (DChkCase e alts) =
         pure (d ++ [decSw], sw)
       GetExpBT ->
         pure (d ++ [decSw, JsDecVar resName JsNull, sw], JsVar resName)
-cgBody rt (DConst c) = pure ([], (addRT rt) $ cgConst c)
-cgBody rt (DOp op args) =
+cgBody rt (LConst c) = pure ([], (addRT rt) $ cgConst c)
+cgBody rt (LOp op args) =
   do
     z <- mapM (cgBody GetExpBT) args
     pure $ (concat $ map fst z, addRT rt $ cgOp op (map snd z))
-cgBody rt DNothing = pure ([], addRT rt JsNull)
-cgBody rt (DError x) = pure ([JsError $ JsStr $ T.pack $ x], addRT rt JsNull)
-cgBody rt x@(DForeign dres (FStr code) args ) =
+cgBody rt LNothing = pure ([], addRT rt JsNull)
+cgBody rt (LError x) = pure ([JsError $ JsStr $ T.pack $ x], addRT rt JsNull)
+{-cgBody rt x@(LForeign dres (FStr code) args ) =
+  do
+    z <- mapM (cgBody GetExpBT) (map snd args)
+    pure (concat $ map fst z, addRT rt $ JsForeign (T.pack code) (map snd z))-}
+cgBody rt x@(LForeign dres (FStr code) args ) =
   do
     z <- mapM (cgBody GetExpBT) (map snd args)
     let jsArgs = map cgForeignArg (zip (map fst args) (map snd z))
@@ -247,17 +259,17 @@ altsRT rn (DecVarBT n) = SetVarBT n
 altsRT rn (SetVarBT n) = SetVarBT n
 altsRT rn GetExpBT = SetVarBT rn
 
-cgAlts :: BodyResTarget -> Text -> JsAST -> [DAlt] -> State CGBodyState ([(JsAST, JsAST)], Maybe JsAST)
-cgAlts rt resName scrvar ((DConstCase t exp):r) =
+cgAlts :: BodyResTarget -> Text -> JsAST -> [LAlt] -> State CGBodyState ([(JsAST, JsAST)], Maybe JsAST)
+cgAlts rt resName scrvar ((LConstCase t exp):r) =
   do
     (d, v) <- cgBody (altsRT resName rt) exp
     (ar, def) <- cgAlts rt resName scrvar r
     pure ((cgConst t, JsSeq (seqJs d) v) : ar, def)
-cgAlts rt resName scrvar ((DDefaultCase exp):r) =
+cgAlts rt resName scrvar ((LDefaultCase exp):r) =
   do
     (d, v) <- cgBody (altsRT resName rt) exp
     pure ([], Just $ JsSeq (seqJs d) v)
-cgAlts rt resName scrvar ((DConCase _ n args exp):r) =
+cgAlts rt resName scrvar ((LConCase _ n args exp):r) =
   do
     (d, v) <- cgBody (altsRT resName rt) exp
     (ar, def) <- cgAlts rt resName scrvar r
@@ -269,9 +281,10 @@ cgAlts rt resName scrvar ((DConCase _ n args exp):r) =
 cgAlts _ _ _ [] =
   pure ([],Nothing)
 
+{-
 apply_name = jsName $ sMN 0 "APPLY"
 eval_name = jsName $ sMN 0 "EVAL"
-
+-}
 
 cgForeignArg :: (FDesc, JsAST) -> JsAST
 cgForeignArg (FApp (UN "JS_IntT") _, v) = v
@@ -279,14 +292,15 @@ cgForeignArg (FCon (UN "JS_Str"), v) = v
 cgForeignArg (FCon (UN "JS_Ptr"), v) = v
 cgForeignArg (FCon (UN "JS_Unit"), v) = v
 cgForeignArg (FApp (UN "JS_FnT") [_,FApp (UN "JS_Fn") [_,_, a, FApp (UN "JS_FnBase") [_,b]]], f) =
-  JsAFun ["x"] $ JsReturn $ cgForeignRes b $ JsApp apply_name [f, cgForeignArg (a, JsVar "x")]
+  f
 cgForeignArg (FApp (UN "JS_FnT") [_,FApp (UN "JS_Fn") [_,_, a, FApp (UN "JS_FnIO") [_,_, b]]], f) =
-  JsAFun ["x"] $ JsReturn $ cgForeignRes b $ evalJSIO $ JsApp apply_name [f, cgForeignArg (a, JsVar "x")]
+  JsLambda ["x"] $ JsReturn $ cgForeignRes b $ JsCurryApp (JsCurryApp f [cgForeignArg (a, JsVar "x")]) [JsNull]
 cgForeignArg (desc, _) = error $ "Foreign arg type " ++ show desc ++ " not supported yet."
-
+{-
 evalJSIO :: JsAST -> JsAST
 evalJSIO x =
   JsAppIfDef eval_name (JsApp apply_name [x, JsInt 0])
+-}
 
 cgForeignRes :: FDesc -> JsAST -> JsAST
 cgForeignRes (FApp (UN "JS_IntT") _) x = x

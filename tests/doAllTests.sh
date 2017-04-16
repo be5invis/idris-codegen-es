@@ -10,6 +10,6 @@ do
   then
     echo "   OK"
   else
-    echo "   KO"
+    echo "   KO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
   fi
 done
