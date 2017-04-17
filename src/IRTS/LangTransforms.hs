@@ -73,6 +73,12 @@ mapMapListKeys :: Ord k => (a->a) -> [k] -> Map k a -> Map k a
 mapMapListKeys _ [] x = x
 mapMapListKeys f (t:r) x = mapMapListKeys f r $ Map.adjust f t x
 
+memberCtx ::  Name -> Ctxt a -> Bool
+memberCtx n ctx =
+  case lookupCtxtExact n ctx of
+    Nothing -> False
+    Just _ -> True
+
 {-
 getFunctionCallsInExp :: LExp -> [Name]
 getFunctionCallsInExp e = [ n | LApp _ n _ <- universe e] ++ [ n | LLazyApp Name [LExp] <- universe e]
@@ -88,31 +94,26 @@ used_functions alldefs (next_name:rest) =
   in next_name : used_functions (Map.delete next_name alldefs) (rest ++ new_names)
 -}
 
-extract_globs :: Map Name LDecl -> LDecl -> [Name]
-extract_globs dcls (LConstructor _ _ _) = []
-extract_globs dcls (LFun _ _ _ e) =
+
+
+extract_globs :: LDefs -> LDecl -> [Name]
+extract_globs defs (LConstructor _ _ _) = []
+extract_globs defs (LFun _ _ _ e) =
   let f (LV (Glob x)) = Just x
       f (LLazyApp x _) = Just x
       f _ = Nothing
-  in [x | Just x <- map f $ universe e, Map.member x dcls]
+  in [x | Just x <- map f $ universe e, memberCtx x defs]
 
-used_functions :: Map Name LDecl -> Set Name -> [Name] -> [Name]
+used_functions :: LDefs -> Set Name -> [Name] -> [Name]
 used_functions _ _ [] = []
 used_functions alldefs done names =
-  let decls = catMaybes $ map (\x -> Map.lookup x alldefs) names
+  let decls = catMaybes $ map (\x -> lookupCtxtExact x alldefs) names
       used_names = (nub $ concat $ map (extract_globs alldefs) decls) \\ names
       new_names = filter (\x -> not $ Set.member x done) used_names
   in  used_names ++ used_functions alldefs (Set.union done $ Set.fromList new_names) new_names
 
 
-used_decls :: Map Name LDecl -> [Name] -> [LDecl]
+used_decls :: LDefs -> [Name] -> [LDecl]
 used_decls dcls start =
   let used = reverse $ start ++ used_functions dcls (Set.fromList start) start
-  in catMaybes $ map (\x -> Map.lookup x dcls) used
-
-{-
-removeUnused :: [(Name, LDecl)] -> Map Name LDecl -> [Name] -> [(Name, LDecl)]
-removeUnused dcls dMap start =
-  let used = used_functions dMap start
-  in filter (\(k, v) -> k `Set.member` used) dcls
--}
+  in catMaybes $ map (\x -> lookupCtxtExact  x dcls) used

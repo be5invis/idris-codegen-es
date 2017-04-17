@@ -1,5 +1,6 @@
 dist
 *.ibc
+*.js.LDecls
 node_modules
 lib/tests/*.js
 rts/browser_lib_b.js
