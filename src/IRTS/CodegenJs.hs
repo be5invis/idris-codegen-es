@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
 
 module IRTS.CodegenJs(codegenJs) where
 
@@ -50,6 +51,7 @@ isYes (Just "Y") = True
 isYes (Just "y") = True
 isYes _ = False
 
+type ArityMap = Map.Map Text Int
 
 codegenJs :: CodeGenerator
 codegenJs ci =
@@ -67,7 +69,11 @@ codegenJs ci =
 
     --let inlined = if optim then inline used else used -- <- if optim then inline debug used else pure used
     --inlined `deepseq` if debug then putStrLn $ "Finished inlining" else pure ()
-    let out = T.intercalate "\n" $ map (doCodegen defs) used
+    let arityMap = foldr (\x -> \m -> case x of {
+      (LFun _ n args _) -> Map.insert (jsName n) (length args) m;
+      _ -> m
+    }) mempty used
+    let out = T.intercalate "\n" $ map (doCodegen defs arityMap) used
     out `deepseq` if debug then putStrLn $ "Finished generating code" else pure ()
     includes <- get_includes $ includes ci
     TIO.writeFile (outputFile ci) $ T.concat [ "(function(){\n\n"
@@ -82,20 +88,22 @@ codegenJs ci =
 jsName :: Name -> Text
 jsName n = T.pack $ "idris_" ++ concatMap jschar (showCG n)
   where jschar x | isAlpha x || isDigit x = [x]
-                  | otherwise = "_" ++ show (fromEnum x) ++ "_"
+                 | x == '.' = "$"
+                 | otherwise = "_" ++ show (fromEnum x) ++ "_"
 
 
-doCodegen :: LDefs -> LDecl -> Text
-doCodegen defs (LFun _ n args def) =
-  jsAst2Text $ cgFun defs n args def
-doCodegen defs (LConstructor n i sz) =
-  ""
+doCodegen :: LDefs -> ArityMap -> LDecl -> Text
+doCodegen defs am (LFun _ n args def) = jsAst2Text $ cgFun defs am n args def
+doCodegen defs am (LConstructor n i 0) = jsAst2Text $ JsFun (jsName n) [] 
+  $ JsSetA (JsPart JsThis $ T.pack "tag") (JsInt i)
+doCodegen defs am (LConstructor n i sz) = "/*CTOR*/" -- jsAst2Text $ JsFun 
 
 seqJs :: [JsAST] -> JsAST
 seqJs [] = JsEmpty
 seqJs (x:xs) = JsSeq x (seqJs xs)
 
 data CGBodyState = CGBodyState { defs :: LDefs
+                               , amap :: ArityMap
                                , lastIntName :: Int
                                , currentFnNameAndArgs :: (Text, [Text])
                                , isTailRec :: Bool
@@ -123,14 +131,15 @@ data BodyResTarget = ReturnBT
                    | SetVarBT Text
                    | GetExpBT
 
-cgFun :: LDefs -> Name -> [Name] -> LExp -> JsAST
-cgFun dfs n args def =
+cgFun :: LDefs -> ArityMap -> Name -> [Name] -> LExp -> JsAST
+cgFun dfs am n args def =
   let
       fnName = jsName n
       argNames = map jsName args
       ((decs, res),st) = runState
                           (cgBody ReturnBT def)
-                          (CGBodyState { defs=dfs
+                          (CGBodyState { defs = dfs
+                                       , amap = am
                                        , lastIntName = 0
                                        , currentFnNameAndArgs = (fnName, argNames)
                                        , isTailRec = False
@@ -138,7 +147,7 @@ cgFun dfs n args def =
                           )
       body = if isTailRec st then JsWhileTrue $ (seqJs decs) `JsSeq` res `JsSeq` JsBreak
                 else JsSeq (seqJs decs) res
-  in JsCurryFun fnName argNames $ body
+  in JsFun fnName argNames $ body
 
 getSwitchJs :: JsAST -> [LAlt] -> JsAST
 getSwitchJs x alts =
@@ -171,8 +180,17 @@ cgBody rt (LApp _ (LV (Glob fn)) args) =
           let calcs = map (\(n,v) -> JsDecVar n v) (zip vars (map snd z))
           let calcsToArgs = map (\(n,v) -> JsSetVar n (JsVar v)) (zip argN vars)
           pure (preDecs ++ calcs ++ calcsToArgs,  JsContinue)
-      _ ->
-        pure $ (preDecs, addRT rt $ JsCurryApp (JsVar fname) (map snd z))
+      _ -> do
+        case (Map.lookup fname $ amap st) of
+          Just n | n == length z -> pure $ (preDecs, addRT rt $ JsApp fname (map snd z))
+                 | n < length z  -> pure $ (preDecs, addRT rt $ 
+                                          JsCurryApp (JsApp fname (take n $ map snd z))
+                                            (drop n $ map snd z))
+                 | n > length z  -> do
+                   let missings = map (T.pack . ("$"++) . show ) $ take (n - length z) [1..]
+                   pure $ (preDecs, addRT rt $ JsCurryFunExp missings $
+                       JsApp fname (map snd z ++ map JsVar missings))
+          _ -> pure $ (preDecs, addRT rt $ JsCurryApp (JsVar fname) (map snd z))
 cgBody rt (LForce (LLazyApp n args)) = cgBody rt (LApp False (LV (Glob n)) args)
 cgBody rt (LLazyApp n args) =
   do

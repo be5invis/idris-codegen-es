@@ -11,17 +11,21 @@ import Data.Data
 
 data JsAST = JsEmpty
            | JsNull
+           | JsThis
            | JsLambda [Text] JsAST
            | JsFun Text [Text] JsAST
            | JsCurryFun Text [Text] JsAST
+           | JsCurryFunExp [Text] JsAST
            | JsReturn JsAST
            | JsApp Text [JsAST]
            | JsCurryApp JsAST [JsAST]
+           | JsPart JsAST Text
            | JsMethod JsAST Text [JsAST]
            | JsVar Text
            | JsSeq JsAST JsAST
            | JsDecVar Text JsAST
            | JsSetVar Text JsAST
+           | JsSetA JsAST JsAST
            | JsArrayProj JsAST JsAST
            | JsInt Int
            | JsInteger Integer
@@ -53,8 +57,8 @@ curryDef :: [Text] -> JsAST -> Text
 curryDef [] body =
   jsAst2Text body
 curryDef (x:xs) body =
-  T.concat [ "return function", "(", x, "){\n"
-           , indent $ curryDef xs body
+  T.concat [ "function", "(", x, "){\n"
+           , indent $ T.concat ["return ", curryDef xs body]
            , "}\n"
            ]
 
@@ -62,6 +66,7 @@ curryDef (x:xs) body =
 jsAst2Text :: JsAST -> Text
 jsAst2Text JsEmpty = ""
 jsAst2Text JsNull = "null"
+jsAst2Text JsThis = "this"
 jsAst2Text (JsLambda args body) =
   T.concat [ "(function", "(", T.intercalate ", " args , "){"
            , jsAst2Text body
@@ -72,10 +77,11 @@ jsAst2Text (JsFun name args body) =
            , indent $ jsAst2Text body
            , "}\n"
            ]
+jsAst2Text (JsCurryFunExp args body) = curryDef args body
 jsAst2Text (JsCurryFun name args body) =
   T.concat [ "var ", name, " = \n"
            , indent $ T.concat [ "(function(){\n"
-                               , indent $ curryDef args body
+                               , indent $ T.concat ["return ", curryDef args body]
                                , "})()"
                                ]
            ]
@@ -99,12 +105,19 @@ jsAst2Text (JsMethod obj name args) =
            , T.intercalate ", " $ map jsAst2Text args
            , ")"
            ]
+jsAst2Text (JsPart obj name) =
+  T.concat [ jsAst2Text obj
+           , "["
+           , T.pack (show name)
+           , "]"
+           ]
 jsAst2Text (JsVar x) = x
 jsAst2Text (JsSeq JsEmpty y) = jsAst2Text y
 jsAst2Text (JsSeq x JsEmpty) = jsAst2Text x
 jsAst2Text (JsSeq x y) = T.concat [jsAst2Text x, ";\n", jsAst2Text y]
 jsAst2Text (JsDecVar name exp) = T.concat [ "var ", name, " = ", jsAst2Text exp]
 jsAst2Text (JsSetVar name exp) = T.concat [ name, " = ", jsAst2Text exp]
+jsAst2Text (JsSetA name exp) = T.concat [ jsAst2Text name, " = ", jsAst2Text exp]
 jsAst2Text (JsArrayProj i exp) = T.concat [ jsAst2Text exp, "[", jsAst2Text i, "]"]
 jsAst2Text (JsInt i) = T.pack $ show i
 jsAst2Text (JsDouble d) = T.pack $ show d

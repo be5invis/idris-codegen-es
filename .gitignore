@@ -7,3 +7,6 @@ rts/browser_lib_b.js
 examples/*.js
 tests/*.js
 lib/js_doc
+.cabal-sandbox
+.stack-work
+cabal.sandbox.config
