@@ -85,11 +85,23 @@ codegenJs ci =
                                              , "\n}())"
                                              ]
 
-jsName :: Name -> Text
-jsName n = T.pack $ "idris_" ++ concatMap jschar (showCG n)
+jsEscape :: String -> String
+jsEscape = concatMap jschar
   where jschar x | isAlpha x || isDigit x = [x]
-                 | x == '.' = "$"
+                 | x == '_' = "__"
                  | otherwise = "_" ++ show (fromEnum x) ++ "_"
+
+showCGJS :: Name -> (String, String)
+showCGJS (UN n) = ("u_", jsEscape $ T.unpack n)
+showCGJS (NS n s) = ("q_", showSep "$" (map (jsEscape . T.unpack) (reverse s)) ++ "$$" ++ (snd $ showCGJS n))
+showCGJS (MN _ u) | u == txt "underscore" = ("", "_")
+showCGJS (MN i s) = ("_", (jsEscape $ T.unpack s) ++ "$" ++ show i)
+showCGJS n = ("x_", jsEscape $ showCG n)
+showCGJS (SymRef i) = error "can't do codegen for a symbol reference"
+
+jsName :: Name -> Text
+jsName n = let (prefix, name) = showCGJS n
+           in T.pack $ prefix ++ name
 
 
 doCodegen :: LDefs -> ArityMap -> LDecl -> Text
@@ -123,7 +135,7 @@ getConsId n =
       st <- get
       case lookupCtxtExact n (defs st) of
         Just (LConstructor _ conId _) -> pure conId
-        _ -> error $ "ups " ++ showCG n
+        _ -> error $ "ups " ++ (snd . showCGJS) n
 
 
 data BodyResTarget = ReturnBT
