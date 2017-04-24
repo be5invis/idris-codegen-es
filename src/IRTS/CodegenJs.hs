@@ -196,20 +196,25 @@ cgBody rt (LApp _ (LV (Glob fn)) args) =
           let calcsToArgs = map (\(n,v) -> JsSetVar n (JsVar v)) (zip argN vars)
           pure (preDecs ++ calcs ++ calcsToArgs,  JsContinue)
       _ -> do
+        let rlen = length z
+        let argsJS = map snd z
         case (Map.lookup fname $ amap st) of
-          Just n | n == 0 && n == length z
+          Just n | n == 0 && alen == 0
                     -> pure $ (preDecs, addRT rt $ JsVar fname)
-                 | n == 0 && n < length z
-                    -> pure $ (preDecs, addRT rt $ JsCurryApp (JsVar fname) (drop n $ map snd z))
-          Just n | n == length z
-                    -> pure $ (preDecs, addRT rt $ JsApp fname (map snd z))
-                 | n < length z  -> pure $ (preDecs, addRT rt $ 
-                                          JsCurryApp (JsApp fname (take n $ map snd z))
-                                            (drop n $ map snd z))
-                 | n > length z  -> do
-                   let missings = map (T.pack . ("$"++) . show ) $ take (n - length z) [1..]
-                   pure $ (preDecs, addRT rt $ JsCurryFunExp missings $
-                       JsApp fname (map snd z ++ map JsVar missings))
+                 | n == 0 && alen > 0
+                    -> pure $ (preDecs, addRT rt $ JsCurryApp (JsVar fname) (drop n argsJS))
+          Just n | n == alen
+                    -> pure $ (preDecs, addRT rt $ JsApp fname argsJS)
+                 | n < alen  -> pure $ (preDecs, addRT rt $ 
+                                          JsCurryApp (JsApp fname (take n argsJS))
+                                            (drop n argsJS))
+                 | n > alen  -> do
+                   let existings = map (T.pack . ("$h"++) . show) $ take alen [1..]
+                   let missings = map (T.pack . ("$m"++) . show ) $ take (n - alen) [1..]
+                   pure $ (preDecs, addRT rt $ JSAppE
+                       (JSLambda existings $ JsCurryFunExp missings $
+                         JsApp fname (map JSVar existings ++ map JsVar missings))
+                       argsJS)
           _ -> pure $ (preDecs, addRT rt $ JsCurryApp (JsVar fname) (map snd z))
 cgBody rt (LForce (LLazyApp n args)) = cgBody rt (LApp False (LV (Glob n)) args)
 cgBody rt (LLazyApp n args) =
