@@ -18,6 +18,7 @@ data JsAST = JsEmpty
            | JsCurryFunExp [Text] JsAST
            | JsReturn JsAST
            | JsApp Text [JsAST]
+           | JsAppE JsAST [JsAST]
            | JsCurryApp JsAST [JsAST]
            | JsPart JsAST Text
            | JsMethod JsAST Text [JsAST]
@@ -68,8 +69,8 @@ jsAst2Text JsEmpty = ""
 jsAst2Text JsNull = "null"
 jsAst2Text JsThis = "this"
 jsAst2Text (JsLambda args body) =
-  T.concat [ "(function", "(", T.intercalate ", " args , "){"
-           , jsAst2Text body
+  T.concat [ "(function", "(", T.intercalate ", " args , "){\n"
+           , indent $ jsAst2Text body
            , "})"
            ]
 jsAst2Text (JsFun name args body) =
@@ -96,6 +97,7 @@ jsAst2Text (JsCurryFun name (x:xs) body) =
            ]-}
 jsAst2Text (JsReturn x) = T.concat [ "return ", jsAst2Text x]
 jsAst2Text (JsApp fn args) = T.concat [fn, "(", T.intercalate ", " $ map jsAst2Text args, ")"]
+jsAst2Text (JsAppE fn args) = T.concat [jsAst2Text fn, "(", T.intercalate ", " $ map jsAst2Text args, ")"]
 jsAst2Text (JsCurryApp fn []) = jsAst2Text fn
 jsAst2Text (JsCurryApp fn args) = T.concat [jsAst2Text fn, "(", T.intercalate ")(" $ map jsAst2Text args, ")"]
 jsAst2Text (JsMethod obj name args) =

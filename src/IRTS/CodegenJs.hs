@@ -82,6 +82,7 @@ codegenJs ci =
                                              , js_aux_defs, "\n"
                                              , out, "\n"
                                              , "\n\n"
+                                             -- , (jsName $ sMN 0 "runMain"), "()"
                                              , "\n}())"
                                              ]
 
@@ -159,7 +160,9 @@ cgFun dfs am n args def =
                           )
       body = if isTailRec st then JsWhileTrue $ (seqJs decs) `JsSeq` res `JsSeq` JsBreak
                 else JsSeq (seqJs decs) res
-  in JsFun fnName argNames $ body
+  in if(length argNames > 0)
+    then JsFun fnName argNames body
+    else JsDecVar fnName $ JsAppE (JsLambda [] body) []
 
 getSwitchJs :: JsAST -> [LAlt] -> JsAST
 getSwitchJs x alts =
@@ -194,7 +197,12 @@ cgBody rt (LApp _ (LV (Glob fn)) args) =
           pure (preDecs ++ calcs ++ calcsToArgs,  JsContinue)
       _ -> do
         case (Map.lookup fname $ amap st) of
-          Just n | n == length z -> pure $ (preDecs, addRT rt $ JsApp fname (map snd z))
+          Just n | n == 0 && n == length z
+                    -> pure $ (preDecs, addRT rt $ JsVar fname)
+                 | n == 0 && n < length z
+                    -> pure $ (preDecs, addRT rt $ JsCurryApp (JsVar fname) (drop n $ map snd z))
+          Just n | n == length z
+                    -> pure $ (preDecs, addRT rt $ JsApp fname (map snd z))
                  | n < length z  -> pure $ (preDecs, addRT rt $ 
                                           JsCurryApp (JsApp fname (take n $ map snd z))
                                             (drop n $ map snd z))
