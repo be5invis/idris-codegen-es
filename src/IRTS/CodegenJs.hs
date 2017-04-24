@@ -196,7 +196,7 @@ cgBody rt (LApp _ (LV (Glob fn)) args) =
           let calcsToArgs = map (\(n,v) -> JsSetVar n (JsVar v)) (zip argN vars)
           pure (preDecs ++ calcs ++ calcsToArgs,  JsContinue)
       _ -> do
-        let rlen = length z
+        let alen = length z
         let argsJS = map snd z
         case (Map.lookup fname $ amap st) of
           Just n | n == 0 && alen == 0
