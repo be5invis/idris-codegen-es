@@ -13,7 +13,7 @@ import System.Exit
 
 import Control.Monad
 
-import Paths_idris_js
+import Paths_idris_codegen_js
 
 data Opts = Opts
   { inputs :: [FilePath]
