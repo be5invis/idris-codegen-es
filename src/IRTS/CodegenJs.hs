@@ -150,7 +150,7 @@ cgFun dfs n args def =
                                        , isTailRec = False
                                        }
                           )
-      body = if isTailRec st then JsWhileTrue $ (seqJs decs) `JsSeq` res `JsSeq` JsBreak
+      body = if isTailRec st then JsForever $ (seqJs decs) `JsSeq` res `JsSeq` JsBreak
                 else JsSeq (seqJs decs) res
   in if(length argNames > 0)
     then JsFun fnName argNames body

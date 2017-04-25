@@ -45,7 +45,7 @@ data JsAST = JsEmpty
            | JsBinOp Text JsAST JsAST
            | JsForeign Text [JsAST]
            | JsB2I JsAST
-           | JsWhileTrue JsAST
+           | JsForever JsAST
            | JsContinue
            | JsBreak
            | JsComment Text
@@ -175,8 +175,8 @@ jsAst2Text (JsForeign code args) =
       args_repl c i (t:r) = args_repl (T.replace ("%" `T.append` T.pack (show i)) t c) (i+1) r
   in T.concat ["(", args_repl code 0 (map jsAst2Text args), ")"]
 jsAst2Text (JsB2I x) = jsAst2Text $ JsBinOp "+" x (JsInt 0)
-jsAst2Text (JsWhileTrue x) =
-  T.concat [ "while(true){\n"
+jsAst2Text (JsForever x) =
+  T.concat [ "for(;;) {\n"
            , indent $ jsAst2Text x
            , "}\n"
            ]
