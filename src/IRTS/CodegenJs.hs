@@ -288,12 +288,16 @@ altsRT rn (DecVarBT n) = SetVarBT n
 altsRT rn (SetVarBT n) = SetVarBT n
 altsRT rn GetExpBT = SetVarBT rn
 
+smartif :: JsAST -> JsAST -> Maybe JsAST -> JsAST
+smartif cond conseq (Just alt) = JsIf cond conseq (Just alt)
+smartif cond conseq Nothing    = conseq
+
 cgIfTree :: BodyResTarget -> Text -> JsAST -> [LAlt] -> State CGBodyState (Maybe JsAST)
 cgIfTree rt resName scrvar ((LConstCase t exp):r) =
   do
     (d, v) <- cgBody (altsRT resName rt) exp
     alternatives <- cgIfTree rt resName scrvar r
-    pure $ Just $ JsIf (JsBinOp "===" scrvar (cgConst t)) (JsSeq (seqJs d) v) alternatives
+    pure $ Just $ smartif (JsBinOp "===" scrvar (cgConst t)) (JsSeq (seqJs d) v) alternatives
 cgIfTree rt resName scrvar ((LDefaultCase exp):r) =
   do
     (d, v) <- cgBody (altsRT resName rt) exp
@@ -305,7 +309,7 @@ cgIfTree rt resName scrvar ((LConCase _ n args exp):r) =
     comparison <- formConCompare n scrvar
     let replace = replaceMatchVars scrvar (Map.fromList $ zip (map jsName args) [1..])
     let branchBody = JsSeq (seqJs $ map replace d) (replace v)
-    pure $ Just $ JsIf comparison branchBody alternatives
+    pure $ Just $ smartif comparison branchBody alternatives
 cgIfTree _ _ _ [] = pure Nothing
 
 cgForeignArg :: (FDesc, JsAST) -> JsAST
