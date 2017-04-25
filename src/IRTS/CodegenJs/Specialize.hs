@@ -28,10 +28,10 @@ constructorOptimizeDB =
   Map.fromList
     [ item "Prelude.Bool" "True" (const $ JsBool True) id cantProj
     , item "Prelude.Bool" "False" (const $ JsBool False) falseTest cantProj
-    , item "Prelude.List" "::" cons fillList uncons
-    , item "Prelude.List" "Nil" nil emptyList cantProj
-    , item "Prelude.Maybe" "Just" (\[x] -> x) notNoneTest justProj
-    , item "Prelude.Maybe" "Nothing" (const $ JsUndefined) noneTest cantProj
+    -- , item "Prelude.List" "::" cons fillList uncons
+    -- , item "Prelude.List" "Nil" nil emptyList cantProj
+    -- , item "Prelude.Maybe" "Just" (\[x] -> x) notNoneTest justProj
+    -- , item "Prelude.Maybe" "Nothing" (const $ JsUndefined) noneTest cantProj
     ]
   where
     -- constructors

@@ -206,7 +206,7 @@ cgBody rt (LLet n v sc) = do
   pure $ ((d1 ++ v1 : d2), v2)
 cgBody rt (LProj e i) = do
   (d, v) <- cgBody GetExpBT e
-  pure $ (d, addRT rt $ JsArrayProj (JsInt $ i + 1) $ v)
+  pure $ (d, addRT rt $ JsProp v (T.pack $ "$" ++ (show $ i + 1)))
 cgBody rt (LCon _ conId n args) = do
   z <- mapM (cgBody GetExpBT) args
   con <- formCon n (map snd z)
