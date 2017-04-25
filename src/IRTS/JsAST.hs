@@ -28,11 +28,14 @@ data JsAST = JsEmpty
            | JsSetVar Text JsAST
            | JsSetA JsAST JsAST
            | JsArrayProj JsAST JsAST
+           | JsObj [(Text, JsAST)]
+           | JsProp JsAST Text
            | JsInt Int
            | JsInteger Integer
            | JsDouble Double
            | JsStr Text
            | JsArray [JsAST]
+           | JsIf JsAST JsAST (Maybe JsAST)
            | JsSwitchCase JsAST [(JsAST, JsAST)] (Maybe JsAST)
            | JsError JsAST
            | JsErrorExp JsAST
@@ -120,12 +123,33 @@ jsAst2Text (JsSeq x y) = T.concat [jsAst2Text x, ";\n", jsAst2Text y]
 jsAst2Text (JsDecVar name exp) = T.concat [ "var ", name, " = ", jsAst2Text exp]
 jsAst2Text (JsSetVar name exp) = T.concat [ name, " = ", jsAst2Text exp]
 jsAst2Text (JsSetA name exp) = T.concat [ jsAst2Text name, " = ", jsAst2Text exp]
+jsAst2Text (JsObj props) = T.concat [ "({"
+                                    , T.intercalate ", " 
+                                         (map (\(name, val) -> T.concat [name, ": ", jsAst2Text val]) 
+                                              props)
+                                    , "})"]
+jsAst2Text (JsProp object name) = T.concat [ jsAst2Text object, ".", name]
 jsAst2Text (JsArrayProj i exp) = T.concat [ jsAst2Text exp, "[", jsAst2Text i, "]"]
 jsAst2Text (JsInt i) = T.pack $ show i
 jsAst2Text (JsDouble d) = T.pack $ show d
 jsAst2Text (JsInteger i) = T.pack $ show i
 jsAst2Text (JsStr s) = T.pack $ show s
 jsAst2Text (JsArray l) = T.concat [ "[", T.intercalate ", " (map jsAst2Text l), "]"]
+jsAst2Text (JsIf cond conseq (Just alt@(JsIf _ _ _))) = T.concat [
+  "if(", jsAst2Text cond, ") {\n",
+    indent $ jsAst2Text conseq,
+  "} else ",
+    jsAst2Text alt]
+jsAst2Text (JsIf cond conseq (Just alt)) = T.concat [
+  "if(", jsAst2Text cond, ") {\n",
+    indent $ jsAst2Text conseq,
+  "} else {\n",
+    indent $ jsAst2Text alt,
+  "}\n"]
+jsAst2Text (JsIf cond conseq Nothing) = T.concat [
+  "if(", jsAst2Text cond, ") {\n",
+    indent $ jsAst2Text conseq,
+  "}\n"]
 jsAst2Text (JsSwitchCase exp l d) =
   T.concat [ "switch(", jsAst2Text exp, "){\n"
            , indent $ T.concat $ map case2Text l
