@@ -1,6 +1,8 @@
 # idris-codegen-js
 
-Optimized JavaScript codegen for Idris.
+Optimized JavaScript codegen for Idris. 
+
+Originally based on the codegen in https://github.com/rbarreiro/idrisjs.
 
 Objective:
 
@@ -13,4 +15,4 @@ To build:
 stack build
 ```
 
-JS bindings: https://github.com/rbarreiro/idrisjs
+JS bindings: https://github.com/rbarreiro/idrisjs.
