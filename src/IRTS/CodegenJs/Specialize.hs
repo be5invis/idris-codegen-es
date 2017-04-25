@@ -1,6 +1,17 @@
-module IRTS.CodegenJs.Specialize where
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternGuards #-}
 
+module IRTS.CodegenJs.Specialize
+  ( SCtor
+  , STest
+  , SProj
+  , specialCased
+  ) where
+
+import Data.Char
+import Data.List
 import qualified Data.Map.Strict as Map
+import Data.Text (Text)
 import qualified Data.Text as T
 import IRTS.CodegenJs.JsAST
 import Idris.Core.TT
@@ -22,8 +33,8 @@ constructorOptimizeDB =
     , item "Prelude.Maybe" "Just" (\[x] -> x) notNoneTest justProj
     , item "Prelude.Maybe" "Nothing" (const $ JsUndefined) noneTest cantProj
     ]
-    -- constructors
   where
+    -- constructors
     nil = const $ JsArray []
     cons [h, t] = JsMethod (JsArray [h]) "concat" [t]
     -- tests
