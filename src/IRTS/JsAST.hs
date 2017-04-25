@@ -11,6 +11,7 @@ import Data.Data
 
 data JsAST = JsEmpty
            | JsNull
+           | JsUndefined
            | JsThis
            | JsLambda [Text] JsAST
            | JsFun Text [Text] JsAST
@@ -31,6 +32,7 @@ data JsAST = JsEmpty
            | JsObj [(Text, JsAST)]
            | JsProp JsAST Text
            | JsInt Int
+           | JsBool Bool
            | JsInteger Integer
            | JsDouble Double
            | JsStr Text
@@ -39,6 +41,7 @@ data JsAST = JsEmpty
            | JsSwitchCase JsAST [(JsAST, JsAST)] (Maybe JsAST)
            | JsError JsAST
            | JsErrorExp JsAST
+           | JsUniOp Text JsAST
            | JsBinOp Text JsAST JsAST
            | JsForeign Text [JsAST]
            | JsB2I JsAST
@@ -70,6 +73,7 @@ curryDef (x:xs) body =
 jsAst2Text :: JsAST -> Text
 jsAst2Text JsEmpty = ""
 jsAst2Text JsNull = "null"
+jsAst2Text JsUndefined = "(void 0)"
 jsAst2Text JsThis = "this"
 jsAst2Text (JsLambda args body) =
   T.concat [ "(function", "(", T.intercalate ", " args , "){\n"
@@ -131,6 +135,8 @@ jsAst2Text (JsObj props) = T.concat [ "({"
 jsAst2Text (JsProp object name) = T.concat [ jsAst2Text object, ".", name]
 jsAst2Text (JsArrayProj i exp) = T.concat [ jsAst2Text exp, "[", jsAst2Text i, "]"]
 jsAst2Text (JsInt i) = T.pack $ show i
+jsAst2Text (JsBool True) = T.pack "true"
+jsAst2Text (JsBool False) = T.pack "false"
 jsAst2Text (JsDouble d) = T.pack $ show d
 jsAst2Text (JsInteger i) = T.pack $ show i
 jsAst2Text (JsStr s) = T.pack $ show s
@@ -162,6 +168,8 @@ jsAst2Text (JsErrorExp t) =
   T.concat ["js_idris_throw2(new Error(  ", jsAst2Text t, "))"]
 jsAst2Text (JsBinOp op a1 a2) =
   T.concat ["(", jsAst2Text a1," ", op, " ",jsAst2Text a2, ")"]
+jsAst2Text (JsUniOp op a) =
+  T.concat ["( ", op, jsAst2Text a, ")"]
 jsAst2Text (JsForeign code args) =
   let args_repl c i [] = c
       args_repl c i (t:r) = args_repl (T.replace ("%" `T.append` T.pack (show i)) t c) (i+1) r

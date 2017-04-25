@@ -239,17 +239,24 @@ cgBody _ x = error $ "Instruction " ++ show x ++ " not compilable yet"
 
 formCon :: Name -> [JsAST] -> State CGBodyState JsAST
 formCon n args = do
-  (conId, arity) <- getConsId n
-  if(arity > 0)
-    then pure $ JsObj $ (T.pack "type", JsInt conId) : zip (map (\i -> T.pack $ "$" ++ show i) [1..]) args
-    else pure $ JsInt conId
+  case specialCased n of
+    Just (ctor, test, match) -> pure $ ctor args
+    Nothing -> do
+      (conId, arity) <- getConsId n
+      if(arity > 0)
+        then pure $ JsObj $
+          (T.pack "type", JsInt conId) : zip (map (\i -> T.pack $ "$" ++ show i) [1..]) args
+        else pure $ JsInt conId
 
-formConCompare :: Name -> JsAST -> State CGBodyState JsAST
-formConCompare n x = do
-  (conId, arity) <- getConsId n
-  if(arity > 0)
-    then pure $ JsBinOp "&&" x $ JsBinOp "===" (JsProp x (T.pack "type")) (JsInt conId)
-    else pure $ JsBinOp "===" x (JsInt conId)
+formConTest :: Name -> JsAST -> State CGBodyState JsAST
+formConTest n x = do
+  case specialCased n of
+    Just (ctor, test, match) -> pure $ test x
+    Nothing -> do
+      (conId, arity) <- getConsId n
+      if(arity > 0)
+        then pure $ JsBinOp "&&" x $ JsBinOp "===" (JsProp x (T.pack "type")) (JsInt conId)
+        else pure $ JsBinOp "===" x (JsInt conId)
 
 formApp :: LDefs -> Name -> [JsAST] -> JsAST
 formApp defs fn argsJS = do
@@ -271,16 +278,25 @@ formApp defs fn argsJS = do
                   argsJS
     _ -> JsCurryApp (JsVar fname) argsJS
 
-replaceMatchVars :: JsAST -> Map Text Int -> JsAST -> JsAST
-replaceMatchVars n d z =
-  transform f z
+replaceMatchVars :: Name -> JsAST -> Map Text Int -> State CGBodyState (JsAST -> JsAST)
+replaceMatchVars n v d = do
+  st <- get
+  pure $ replaceMatchVars' (defs st) n v d
   where
-    f :: JsAST -> JsAST
-    f (JsVar x) =
-      case Map.lookup x d of
-        Nothing -> (JsVar x)
-        Just i -> JsProp n (T.pack $ "$" ++ show i)
-    f x = x
+    replaceMatchVars' :: LDefs -> Name -> JsAST -> Map Text Int -> (JsAST -> JsAST)
+    replaceMatchVars' dfs n v d z = transform f z
+      where
+        formProj :: JsAST -> Int -> JsAST
+        formProj v i = case specialCased n of
+          Just (ctor, test, proj) -> proj v i
+          Nothing -> JsProp v (T.pack $ "$" ++ show i)
+
+        f :: JsAST -> JsAST
+        f (JsVar x) =
+          case Map.lookup x d of
+            Nothing -> (JsVar x)
+            Just i -> formProj v i
+        f x = x
 
 altsRT :: Text -> BodyResTarget -> BodyResTarget
 altsRT rn ReturnBT = ReturnBT
@@ -306,10 +322,10 @@ cgIfTree rt resName scrvar ((LConCase _ n args exp):r) =
   do
     (d, v) <- cgBody (altsRT resName rt) exp
     alternatives <- cgIfTree rt resName scrvar r
-    comparison <- formConCompare n scrvar
-    let replace = replaceMatchVars scrvar (Map.fromList $ zip (map jsName args) [1..])
+    test <- formConTest n scrvar
+    replace <- replaceMatchVars n scrvar (Map.fromList $ zip (map jsName args) [1..])
     let branchBody = JsSeq (seqJs $ map replace d) (replace v)
-    pure $ Just $ smartif comparison branchBody alternatives
+    pure $ Just $ smartif test branchBody alternatives
 cgIfTree _ _ _ [] = pure Nothing
 
 cgForeignArg :: (FDesc, JsAST) -> JsAST
@@ -376,3 +392,38 @@ cgOp LStrCons [l,r] = JsForeign "String.fromCharCode(%0) + %1" [l,r]
 cgOp (LSRem (ATInt _)) [l,r] = JsBinOp "%" l r
 cgOp LCrash [l] = JsErrorExp l
 cgOp op exps = error ("Operator " ++ show (op, exps) ++ " not implemented")
+
+
+
+-- special-cased constructors
+type SCtor  = [JsAST] -> JsAST
+type STest  = JsAST -> JsAST
+type SProj = JsAST -> Int -> JsAST
+
+constructorOptimizeDB :: Map.Map Name (SCtor, STest, SProj)
+constructorOptimizeDB = Map.fromList [
+      item "Prelude.Bool"  "True"    (\_ -> JsBool True)  id          cantProj
+    , item "Prelude.Bool"  "False"   (\_ -> JsBool False) falseTest   cantProj
+    , item "Prelude.Maybe" "Just"    (\[x] -> x)          notNoneTest justProj
+    , item "Prelude.Maybe" "Nothing" (\[] -> JsUndefined) noneTest    cantProj
+    ]
+  where
+    noneTest e = JsBinOp "===" e JsUndefined
+    notNoneTest e = JsBinOp "!==" e JsUndefined
+    falseTest e = JsUniOp (T.pack "!") e
+    cantProj x j = error $ "This type should be projected"
+   
+    justProj x n = x
+
+    item :: String -> String -> SCtor -> STest -> SProj -> (Name, (SCtor, STest, SProj))
+    item "" n ctor test match = (sUN n, (ctor, test, match))
+    item ns n ctor test match = (sNS (sUN n) (reverse $ split '.' ns), (ctor, test, match))
+
+    split :: Char -> String -> [String]
+    split c "" = [""]
+    split c (x : xs)
+        | c == x    = "" : split c xs
+        | otherwise = let ~(h:t) = split c xs in ((x:h) : t)
+
+specialCased :: Name -> Maybe (SCtor, STest, SProj)
+specialCased n = Map.lookup n constructorOptimizeDB
