@@ -194,9 +194,18 @@ cgBody rt (LApp _ (LV (Glob fn)) args) = do
       pure (preDecs ++ calcs ++ calcsToArgs, JsContinue)
     _ -> pure $ (preDecs, addRT rt $ formApp (defs st) fn (map snd z))
 cgBody rt (LForce (LLazyApp n args)) = cgBody rt (LApp False (LV (Glob n)) args)
-cgBody rt (LLazyApp n args) = do
-  (d, v) <- cgBody ReturnBT (LApp False (LV (Glob n)) args)
-  pure ([], addRT rt $ JsLazy $ JsSeq (seqJs d) v)
+cgBody rt (LLazyApp fn args) = do
+  st <- get
+  z <- mapM (cgBody GetExpBT) args
+  let preDecs = concat $ map fst z
+  let na = map (T.pack . ("$" ++) . show) $ take (length z) [1 ..]
+  pure
+    ( preDecs
+    , JsAppE
+        (JsLambda (na) $ JsReturn $ jsLazy $ formApp (defs st) fn (map JsVar na))
+        (map snd z))
+  -- (d, v) <- cgBody ReturnBT (LApp False (LV (Glob n)) args)
+  -- pure ([], addRT rt $ JsLazy $ JsSeq (seqJs d) v)
 cgBody rt (LForce e) = do
   (d, v) <- cgBody GetExpBT e
   pure (d, addRT rt $ JsForce v)

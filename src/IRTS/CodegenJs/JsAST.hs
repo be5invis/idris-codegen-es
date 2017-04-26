@@ -3,6 +3,7 @@
 module IRTS.CodegenJs.JsAST
   ( JsAST(..)
   , jsAst2Text
+  ,jsLazy
   , js_aux_defs
   ) where
 
@@ -78,7 +79,6 @@ data JsAST
   | JsBreak
   | JsComment Text
   | JsForce JsAST
-  | JsLazy JsAST
   deriving (Show, Eq, Data, Typeable)
 
 indent :: Text -> Text
@@ -229,9 +229,10 @@ jsAst2Text (JsForever x) =
 jsAst2Text JsContinue = "continue"
 jsAst2Text JsBreak = "break"
 jsAst2Text (JsComment c) = T.concat ["/*", c, "*/"]
-jsAst2Text (JsLazy e) =
-  T.concat ["{js_idris_lazy_calc:function(){", indent $ jsAst2Text e, "}}"]
 jsAst2Text (JsForce e) = T.concat ["js_idris_force(", jsAst2Text e, ")"]
+
+jsLazy :: JsAST -> JsAST
+jsLazy e = JsObj [("js_idris_lazy_calc", (JsLambda [] $ JsReturn e))]
 
 case2Text :: (JsAST, JsAST) -> Text
 case2Text (x, y) =
