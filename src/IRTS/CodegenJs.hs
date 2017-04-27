@@ -175,7 +175,11 @@ addRT (SetVarBT n) x = JsSetVar n x
 addRT GetExpBT x = x
 
 cgBody :: BodyResTarget -> LExp -> State CGBodyState ([JsAST], JsAST)
-cgBody rt (LV (Glob n)) = cgBody rt (LApp False (LV (Glob n)) []) -- recurry
+cgBody rt (LV (Glob n)) = do
+  st <- get
+  case (lookupCtxtExact n (defs st)) of
+    Just (LFun _ _ [a] d) -> pure $ ([], addRT rt $ JsVar $ jsName n)
+    _ -> cgBody rt (LApp False (LV (Glob n)) []) -- recurry
 cgBody rt (LApp _ (LV (Glob fn)) args) = do
   let fname = jsName fn
   st <- get
