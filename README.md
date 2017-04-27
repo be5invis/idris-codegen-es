@@ -15,4 +15,9 @@ To build:
 stack build
 ```
 
-JS bindings: https://github.com/rbarreiro/idrisjs.
+To test: with [Ava](https://github.com/avajs/ava) and [JS Bindings](https://github.com/rbarreiro/idrisjs) installed,
+
+```bash
+npm install
+npm test
+```
