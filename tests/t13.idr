@@ -1,10 +1,15 @@
 module Main
 
-plus : Int -> Int -> Int
-plus x y = x + y
+rec : Int -> Int -> Int
+rec 0 y = y
+rec 1 y = y
+rec x y =
+   rec (y-1) (x-2)
 
 f : (Int -> Int -> Int) -> Int -> Int -> Int
 f op x y = op x y
 
 main : IO ()
-main = print (f plus 1000 2000)
+main = do
+	fn <- pure rec
+	print (f fn 10 5)
