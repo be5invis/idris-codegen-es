@@ -43,11 +43,6 @@ get_includes l = do
   incs <- mapM get_include l
   return $ T.intercalate "\n\n" incs
 
-{-
-genMaps :: [(Name, LDecl)] -> (Map Name Fun, Map Name Con)
-genMaps x =
-  (Map.fromList [(n, Fun n a e) | (_,LFun _ n a e) <- x ], Map.fromList [ (n,Con n i j) | (_, LConstructor n i j) <- x])
--}
 isYes :: Maybe String -> Bool
 isYes (Just "Y") = True
 isYes (Just "y") = True
@@ -59,9 +54,11 @@ codegenJs :: CodeGenerator
 codegenJs ci = do
   optim <- isYes <$> lookupEnv "IDRISJS_OPTIM"
   debug <- isYes <$> lookupEnv "IDRISJS_DEBUG"
+  {-
   if optim
-    then putStrLn "compiling width idris-js optimizations"
-    else putStrLn "compiling widthout idris-js optimizations"
+    then putStrLn "compiling with idris-js optimizations"
+    else putStrLn "compiling without idris-js optimizations"
+  -}
   let defs = addAlist (liftDecls ci) emptyContext -- Map.fromList $ liftDecls ci
   let used = used_decls defs [sMN 0 "runMain"] --removeUnused dcls dclsMap [sMN 0 "runMain"]
   used `deepseq`
@@ -178,11 +175,7 @@ addRT (SetVarBT n) x = JsSetVar n x
 addRT GetExpBT x = x
 
 cgBody :: BodyResTarget -> LExp -> State CGBodyState ([JsAST], JsAST)
-cgBody rt (LV (Glob n)) = do
-  st <- get
-  case lookupCtxtExact (defs st) of
-    Just (LFun _ _ _ _) -> cgBody rt (LApp False (LV (Glob n)) []) -- recurry
-    _ -> pure $ ([], addRT rt $ JsVar $ jsName n)
+cgBody rt (LV (Glob n)) = cgBody rt (LApp False (LV (Glob n)) []) -- recurry
 cgBody rt (LApp _ (LV (Glob fn)) args) = do
   let fname = jsName fn
   st <- get
