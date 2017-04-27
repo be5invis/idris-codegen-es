@@ -5,7 +5,7 @@ import Idris.Core.TT
 import Idris.ElabDecls
 import Idris.Main
 
-import IRTS.CodegenJs
+import IRTS.CodegenEs
 import IRTS.Compiler
 
 import System.Environment
@@ -13,7 +13,7 @@ import System.Exit
 
 import Control.Monad
 
-import Paths_idris_codegen_js
+import Paths_idris_codegen_es
 
 data Opts = Opts
   { inputs :: [FilePath]
@@ -23,7 +23,7 @@ data Opts = Opts
 showUsage = do
   putStrLn
     "A code generator which is intended to be called by the compiler, not by a user."
-  putStrLn "Usage: idris-codegen-js <ibc-files> [-o <output-file>]"
+  putStrLn "Usage: idris-codegen-es <ibc-files> [-o <output-file>]"
   exitWith ExitSuccess
 
 getOpts :: IO Opts

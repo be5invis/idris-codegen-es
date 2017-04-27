@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
 
-module IRTS.CodegenJs.Specialize
+module IRTS.CodegenEs.Specialize
   ( SCtor
   , STest
   , SProj
@@ -13,7 +13,7 @@ import Data.List
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
-import IRTS.CodegenJs.JsAST
+import IRTS.CodegenEs.JsAST
 import Idris.Core.TT
 
 -- special-cased constructors

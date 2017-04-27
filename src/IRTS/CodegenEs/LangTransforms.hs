@@ -2,7 +2,7 @@
   OverloadedStrings, DeriveGeneric, DeriveAnyClass, FlexibleInstances
   #-}
 
-module IRTS.CodegenJs.LangTransforms
+module IRTS.CodegenEs.LangTransforms
   ( used_decls
   ) where
 

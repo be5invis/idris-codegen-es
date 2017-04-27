@@ -1,6 +1,6 @@
-# idris-codegen-js
+# idris-codegen-es
 
-Optimized JavaScript codegen for Idris. 
+Optimized JavaScript codegen for Idris.
 
 Originally based on the codegen in https://github.com/rbarreiro/idrisjs.
 

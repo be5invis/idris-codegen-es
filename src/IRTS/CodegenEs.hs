@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
 
-module IRTS.CodegenJs
+module IRTS.CodegenEs
   ( codegenJs
   ) where
 
@@ -11,9 +11,9 @@ import IRTS.Lang
 import IRTS.LangOpts
 import Idris.Core.TT
 
-import IRTS.CodegenJs.JsAST
-import IRTS.CodegenJs.LangTransforms
-import IRTS.CodegenJs.Specialize
+import IRTS.CodegenEs.JsAST
+import IRTS.CodegenEs.LangTransforms
+import IRTS.CodegenEs.Specialize
 
 import Control.Monad.Trans.State
 import Data.Char

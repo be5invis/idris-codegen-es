@@ -21,7 +21,7 @@ test.group("Idris-codegen-js", test => co(function* () {
 			const jspath = idr.replace(/\.idr$/, '.js')
 			const trpath = idr.replace(/\.idr$/, '.testres')
 			const compile = yield throat(() => cpp.spawn('idris', [
-				'--codegen', 'js',
+				'--codegen', 'es',
 				'-p', 'effects',
 				'-p', 'js',
 				'-o', jspath,

@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable, OverloadedStrings #-}
 
-module IRTS.CodegenJs.JsAST
+module IRTS.CodegenEs.JsAST
   ( JsAST(..)
   , jsAst2Text
   ,jsLazy
