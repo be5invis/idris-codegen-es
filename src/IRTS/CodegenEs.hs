@@ -166,11 +166,11 @@ cgFun dfs n args def =
           else JsSeq (seqJs decs) res
   in if (length argNames > 0)
        then JsFun fnName argNames body
-       else JsDecVar fnName $ JsAppE (JsLambda [] body) []
+       else JsDecConst fnName $ JsAppE (JsLambda [] body) []
 
 addRT :: BodyResTarget -> JsAST -> JsAST
 addRT ReturnBT x = JsReturn x
-addRT (DecVarBT n) x = JsDecVar n x
+addRT (DecVarBT n) x = JsDecLet n x
 addRT (SetVarBT n) x = JsSetVar n x
 addRT GetExpBT x = x
 
@@ -190,7 +190,7 @@ cgBody rt (LApp _ (LV (Glob fn)) args) = do
     (True, ReturnBT) -> do
       put $ st {isTailRec = True}
       vars <- sequence $ map (\_ -> getNewCGName) argN
-      let calcs = map (\(n, v) -> JsDecVar n v) (zip vars (map snd z))
+      let calcs = map (\(n, v) -> JsDecConst n v) (zip vars (map snd z))
       let calcsToArgs = map (\(n, v) -> JsSetVar n (JsVar v)) (zip argN vars)
       pure (preDecs ++ calcs ++ calcsToArgs, JsContinue)
     _ -> pure $ (preDecs, addRT rt $ formApp (defs st) fn (map snd z))
@@ -230,12 +230,12 @@ cgBody rt (LCase _ e alts) = do
         case sw' of
           (Just x) -> x
           Nothing -> JsNull
-  let decSw = JsDecVar swName v
+  let decSw = JsDecLet swName v
   case rt of
     ReturnBT -> pure (d ++ [decSw], sw)
-    (DecVarBT nvar) -> pure (d ++ [decSw, JsDecVar nvar JsNull], sw)
+    (DecVarBT nvar) -> pure (d ++ [decSw, JsDecLet nvar JsNull], sw)
     (SetVarBT nvar) -> pure (d ++ [decSw], sw)
-    GetExpBT -> pure (d ++ [decSw, JsDecVar resName JsNull, sw], JsVar resName)
+    GetExpBT -> pure (d ++ [decSw, JsDecLet resName JsNull, sw], JsVar resName)
 cgBody rt (LConst c) = pure ([], (addRT rt) $ cgConst c)
 cgBody rt (LOp op args) = do
   z <- mapM (cgBody GetExpBT) args
@@ -283,11 +283,11 @@ formApp defs fn argsJS = do
     Just (LFun _ _ ps _)
       | (length ps) == 0 && alen == 0 -> JsVar fname
       | (length ps) == 0 && alen > 0 ->
-        JsCurryApp (JsVar fname) (drop (length ps) argsJS)
-      | (length ps) == alen -> JsApp fname argsJS
+        jsCurryApp (JsVar fname) (drop (length ps) argsJS)
+      | (length ps) == alen -> jsAppN fname argsJS
       | (length ps) < alen ->
-        JsCurryApp
-          (JsApp fname (take (length ps) argsJS))
+        jsCurryApp
+          (jsAppN fname (take (length ps) argsJS))
           (drop (length ps) argsJS)
       | (length ps) > alen -> do
         let existings = map (T.pack . ("$h" ++) . show) $ take alen [1 ..]
@@ -296,10 +296,10 @@ formApp defs fn argsJS = do
         JsAppE
           (JsLambda existings $
            JsReturn $
-           JsCurryFunExp missings $
-           JsApp fname (map JsVar existings ++ map JsVar missings))
+           jsCurryLam missings $
+           jsAppN fname (map JsVar existings ++ map JsVar missings))
           argsJS
-    _ -> JsCurryApp (JsVar fname) argsJS
+    _ -> jsCurryApp (JsVar fname) argsJS
 
 replaceMatchVars :: Name
                  -> JsAST
@@ -373,7 +373,7 @@ cgForeignArg (FApp (UN "JS_FnT") [_, FApp (UN "JS_Fn") [_, _, a, FApp (UN "JS_Fn
   JsLambda ["x"] $
   JsReturn $
   cgForeignRes b $
-  JsCurryApp (JsCurryApp f [cgForeignArg (a, JsVar "x")]) [JsNull]
+  jsCurryApp (jsCurryApp f [cgForeignArg (a, JsVar "x")]) [JsNull]
 cgForeignArg (desc, _) =
   error $ "Foreign arg type " ++ show desc ++ " not supported yet."
 
@@ -417,16 +417,16 @@ cgOp LStrTail [x] = JsMethod x "slice" [JsInt 1]
 cgOp LStrLt [l, r] = JsB2I $ JsBinOp "<" l r
 cgOp (LFloatStr) [x] = JsBinOp "+" x (JsStr "")
 cgOp (LIntStr _) [x] = JsBinOp "+" x (JsStr "")
-cgOp (LFloatInt _) [x] = JsApp "Math.trunc" [x]
-cgOp (LStrInt _) [x] = JsBinOp "||" (JsApp "parseInt" [x]) (JsInt 0)
-cgOp (LStrFloat) [x] = JsBinOp "||" (JsApp "parseFloat" [x]) (JsInt 0)
+cgOp (LFloatInt _) [x] = jsAppN "Math.trunc" [x]
+cgOp (LStrInt _) [x] = JsBinOp "||" (jsAppN "parseInt" [x]) (JsInt 0)
+cgOp (LStrFloat) [x] = JsBinOp "||" (jsAppN "parseFloat" [x]) (JsInt 0)
 cgOp (LChInt _) [x] = x
 cgOp (LIntCh _) [x] = x
 cgOp (LSExt _ _) [x] = x
 cgOp (LZExt _ _) [x] = x
 cgOp (LIntFloat _) [x] = x
 cgOp (LSDiv _) [x, y] = JsBinOp "/" x y
-cgOp LWriteStr [_, str] = JsApp "console.log" [str]
+cgOp LWriteStr [_, str] = jsAppN "console.log" [str]
 cgOp LStrConcat [l, r] = JsBinOp "+" l r
 cgOp LStrCons [l, r] = JsForeign "String.fromCharCode(%0) + %1" [l, r]
 cgOp (LSRem (ATInt _)) [l, r] = JsBinOp "%" l r

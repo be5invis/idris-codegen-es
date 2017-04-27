@@ -3,7 +3,10 @@
 module IRTS.CodegenEs.JsAST
   ( JsAST(..)
   , jsAst2Text
-  ,jsLazy
+  , jsLazy
+  , jsCurryLam
+  , jsCurryApp
+  , jsAppN
   , js_aux_defs
   ) where
 
@@ -21,18 +24,9 @@ data JsAST
   | JsFun Text
           [Text]
           JsAST
-  | JsCurryFun Text
-               [Text]
-               JsAST
-  | JsCurryFunExp [Text]
-                  JsAST
   | JsReturn JsAST
-  | JsApp Text
-          [JsAST]
   | JsAppE JsAST
            [JsAST]
-  | JsCurryApp JsAST
-               [JsAST]
   | JsPart JsAST
            Text
   | JsMethod JsAST
@@ -42,6 +36,10 @@ data JsAST
   | JsSeq JsAST
           JsAST
   | JsDecVar Text
+             JsAST
+  | JsDecConst Text
+               JsAST
+  | JsDecLet Text
              JsAST
   | JsSetVar Text
              JsAST
@@ -87,17 +85,16 @@ indent x =
       il = map (\y -> T.replicate 3 " " `T.append` y) l
   in T.unlines il
 
-curryDef :: [Text] -> JsAST -> Text
-curryDef [] body = jsAst2Text body
-curryDef (x:xs) body =
-  T.concat
-    [ "function"
-    , "("
-    , x
-    , "){\n"
-    , indent $ T.concat ["return ", curryDef xs body]
-    , "}\n"
-    ]
+jsCurryLam :: [Text] -> JsAST -> JsAST
+jsCurryLam [] body = body
+jsCurryLam (x:xs) body = JsLambda [x] $ JsReturn $ jsCurryLam xs body
+
+jsCurryApp :: JsAST -> [JsAST] -> JsAST
+jsCurryApp fn [] = fn
+jsCurryApp fn args = foldl (\ff aa -> JsAppE ff [aa]) fn args
+
+jsAppN :: Text -> [JsAST] -> JsAST
+jsAppN fn args = JsAppE (JsVar fn) args
 
 jsAst2Text :: JsAST -> Text
 jsAst2Text JsEmpty = ""
@@ -123,28 +120,9 @@ jsAst2Text (JsFun name args body) =
     , indent $ jsAst2Text body
     , "}\n"
     ]
-jsAst2Text (JsCurryFunExp args body) = curryDef args body
-jsAst2Text (JsCurryFun name args body) =
-  T.concat
-    [ "var "
-    , name
-    , " = \n"
-    , indent $
-      T.concat
-        [ "(function(){\n"
-        , indent $ T.concat ["return ", curryDef args body]
-        , "})()"
-        ]
-    ]
-
 jsAst2Text (JsReturn x) = T.concat ["return ", jsAst2Text x]
-jsAst2Text (JsApp fn args) =
-  T.concat [fn, "(", T.intercalate ", " $ map jsAst2Text args, ")"]
 jsAst2Text (JsAppE fn args) =
   T.concat [jsAst2Text fn, "(", T.intercalate ", " $ map jsAst2Text args, ")"]
-jsAst2Text (JsCurryApp fn []) = jsAst2Text fn
-jsAst2Text (JsCurryApp fn args) =
-  T.concat [jsAst2Text fn, "(", T.intercalate ")(" $ map jsAst2Text args, ")"]
 jsAst2Text (JsMethod obj name args) =
   T.concat
     [ jsAst2Text obj
@@ -161,6 +139,9 @@ jsAst2Text (JsSeq JsEmpty y) = jsAst2Text y
 jsAst2Text (JsSeq x JsEmpty) = jsAst2Text x
 jsAst2Text (JsSeq x y) = T.concat [jsAst2Text x, ";\n", jsAst2Text y]
 jsAst2Text (JsDecVar name exp) = T.concat ["var ", name, " = ", jsAst2Text exp]
+jsAst2Text (JsDecConst name exp) =
+  T.concat ["const ", name, " = ", jsAst2Text exp]
+jsAst2Text (JsDecLet name exp) = T.concat ["let ", name, " = ", jsAst2Text exp]
 jsAst2Text (JsSetVar name exp) = T.concat [name, " = ", jsAst2Text exp]
 jsAst2Text (JsSetA name exp) = T.concat [jsAst2Text name, " = ", jsAst2Text exp]
 jsAst2Text (JsObj props) =
@@ -217,7 +198,7 @@ jsAst2Text (JsErrorExp t) =
   T.concat ["js_idris_throw2(new Error(  ", jsAst2Text t, "))"]
 jsAst2Text (JsBinOp op a1 a2) =
   T.concat ["(", jsAst2Text a1, " ", op, " ", jsAst2Text a2, ")"]
-jsAst2Text (JsUniOp op a) = T.concat ["( ", op, jsAst2Text a, ")"]
+jsAst2Text (JsUniOp op a) = T.concat ["(", op, jsAst2Text a, ")"]
 jsAst2Text (JsForeign code args) =
   let args_repl c i [] = c
       args_repl c i (t:r) =
