@@ -2,7 +2,7 @@ import Js.ASync
 
 p : Int -> JS_IO Int
 p x = do
-  putStr' "ola"
+  putStrLn' "ola"
   pure $ x + 1
 
 

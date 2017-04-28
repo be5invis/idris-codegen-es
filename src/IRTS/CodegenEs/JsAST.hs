@@ -33,10 +33,8 @@ data JsStmt
                JsExpr
   | JsDecLet Text
              JsExpr
-  | JsSetVar Text
-             JsExpr
-  | JsSetA JsExpr
-           JsExpr
+  | JsSet JsExpr
+          JsExpr
   | JsIf JsExpr
          JsStmt
          (Maybe JsStmt)
@@ -55,8 +53,8 @@ data JsExpr
   | JsThis
   | JsLambda [Text]
              JsStmt
-  | JsAppE JsExpr
-           [JsExpr]
+  | JsApp JsExpr
+          [JsExpr]
   | JsPart JsExpr
            Text
   | JsMethod JsExpr
@@ -99,19 +97,21 @@ jsCurryLam (x:xs) body = JsLambda [x] $ JsReturn $ jsCurryLam xs body
 
 jsCurryApp :: JsExpr -> [JsExpr] -> JsExpr
 jsCurryApp fn [] = fn
-jsCurryApp fn args = foldl (\ff aa -> JsAppE ff [aa]) fn args
+jsCurryApp fn args = foldl (\ff aa -> JsApp ff [aa]) fn args
 
 jsAppN :: Text -> [JsExpr] -> JsExpr
-jsAppN fn args = JsAppE (JsVar fn) args
+jsAppN fn args = JsApp (JsVar fn) args
 
 jsStmt2Text :: JsStmt -> Text
 jsStmt2Text JsEmpty = ""
-jsStmt2Text (JsExprStmt e) = jsAst2Text e
-jsStmt2Text (JsReturn x) = T.concat ["return ", jsAst2Text x]
-jsStmt2Text (JsDecVar name exp) = T.concat ["var ", name, " = ", jsAst2Text exp]
+jsStmt2Text (JsExprStmt e) = T.concat [jsAst2Text e, ";"]
+jsStmt2Text (JsReturn x) = T.concat ["return ", jsAst2Text x, ";"]
+jsStmt2Text (JsDecVar name exp) =
+  T.concat ["var ", name, " = ", jsAst2Text exp, ";"]
 jsStmt2Text (JsDecConst name exp) =
-  T.concat ["const ", name, " = ", jsAst2Text exp]
-jsStmt2Text (JsDecLet name exp) = T.concat ["let ", name, " = ", jsAst2Text exp]
+  T.concat ["const ", name, " = ", jsAst2Text exp, ";"]
+jsStmt2Text (JsDecLet name exp) =
+  T.concat ["let ", name, " = ", jsAst2Text exp, ";"]
 jsStmt2Text (JsFun name args body) =
   T.concat
     [ "function "
@@ -165,17 +165,16 @@ jsStmt2Text (JsSwitchCase exp l d) =
     default2Text Nothing = ""
     default2Text (Just z) =
       T.concat ["default:\n", indent $ T.concat [jsStmt2Text z, ";\nbreak;\n"]]
-jsStmt2Text (JsError t) = T.concat ["throw new Error(  ", jsAst2Text t, ")"]
+jsStmt2Text (JsError t) = T.concat ["throw new Error(  ", jsAst2Text t, ");"]
 jsStmt2Text (JsForever x) =
   T.concat ["for(;;) {\n", indent $ jsStmt2Text x, "}\n"]
-jsStmt2Text JsContinue = "continue"
-jsStmt2Text JsBreak = "break"
+jsStmt2Text JsContinue = "continue;"
+jsStmt2Text JsBreak = "break;"
 jsStmt2Text (JsSeq JsEmpty y) = jsStmt2Text y
 jsStmt2Text (JsSeq x JsEmpty) = jsStmt2Text x
-jsStmt2Text (JsSeq x y) = T.concat [jsStmt2Text x, ";\n", jsStmt2Text y]
-jsStmt2Text (JsSetVar name exp) = T.concat [name, " = ", jsAst2Text exp]
-jsStmt2Text (JsSetA term exp) =
-  T.concat [jsAst2Text term, " = ", jsAst2Text exp]
+jsStmt2Text (JsSeq x y) = T.concat [jsStmt2Text x, "\n", jsStmt2Text y]
+jsStmt2Text (JsSet term exp) =
+  T.concat [jsAst2Text term, " = ", jsAst2Text exp, ";"]
 
 jsAst2Text :: JsExpr -> Text
 jsAst2Text JsNull = "null"
@@ -190,7 +189,7 @@ jsAst2Text (JsLambda args body) =
     , indent $ jsStmt2Text body
     , "})"
     ]
-jsAst2Text (JsAppE fn args) =
+jsAst2Text (JsApp fn args) =
   T.concat [jsAst2Text fn, "(", T.intercalate ", " $ map jsAst2Text args, ")"]
 jsAst2Text (JsMethod obj name args) =
   T.concat
@@ -241,7 +240,7 @@ jsLazy :: JsExpr -> JsExpr
 jsLazy e = JsObj [("js_idris_lazy_calc", (JsLambda [] $ JsReturn e))]
 
 throw2 =
-  T.concat ["var js_idris_throw2 = function (x){\n", " throw x;\n", "}\n\n"]
+  T.concat ["var js_idris_throw2 = function (x){\n", " throw x;\n", "}\n"]
 
 force =
   T.concat
@@ -251,10 +250,10 @@ force =
     , " }else{\n"
     , "  if(x.js_idris_lazy_val === undefined){\n"
     , "   x.js_idris_lazy_val = x.js_idris_lazy_calc()\n"
-    , "  }"
-    , "  return x.js_idris_lazy_val"
-    , "}"
-    , "}\n\n"
+    , "  }\n"
+    , " return x.js_idris_lazy_val\n"
+    , " }\n"
+    , "}\n"
     ]
 
 js_aux_defs = T.concat [throw2, force]
@@ -264,4 +263,4 @@ jsExpr2Stmt = JsExprStmt
 
 jsStmt2Expr :: JsStmt -> JsExpr
 jsStmt2Expr (JsExprStmt x) = x
-jsStmt2Expr x = JsAppE (JsLambda [] x) []
+jsStmt2Expr x = JsApp (JsLambda [] x) []
