@@ -12,6 +12,7 @@ import IRTS.LangOpts
 import Idris.Core.TT
 
 import IRTS.CodegenEs.JsAST
+import IRTS.CodegenEs.JsName
 import IRTS.CodegenEs.LangTransforms
 import IRTS.CodegenEs.Specialize
 
@@ -80,66 +81,14 @@ codegenJs ci = do
   includes <- get_includes $ includes ci
   TIO.writeFile (outputFile ci) $
     T.concat
-      [ "(function(){\n\n"
-      , "\"use strict\";\n\n"
+      [ "\"use strict\";\n\n"
       , includes
       , "\n"
       , js_aux_defs
       , "\n"
       , out
-      , "\n}())"
+      , "\n"
       ]
-
-jsEscape :: String -> String
-jsEscape = concatMap jschar
-  where
-    jschar x
-      | isAlpha x || isDigit x = [x]
-      | x == '_' = "__"
-      | otherwise = "_" ++ show (fromEnum x) ++ "_"
-
-showCGJS :: Name -> String
-showCGJS (UN n) = T.unpack n
-showCGJS (NS n s) = showSep "." (map T.unpack (reverse s)) ++ "." ++ showCGJS n
-showCGJS (MN _ u)
-  | u == txt "underscore" = "_"
-showCGJS (MN i s) = "{" ++ T.unpack s ++ "_" ++ show i ++ "}"
-showCGJS (SN s) = showCGJS' s
-  where
-    showCGJS' (WhereN i p c) =
-      "where{" ++ showCGJS p ++ ";" ++ showCGJS c ++ ";" ++ show i ++ "}"
-    showCGJS' (WithN i n) = "_" ++ "with{" ++ showCGJS n ++ ";" ++ show i ++ "}"
-    showCGJS' (ImplementationN cl impl) =
-      "impl{" ++ showCGJS cl ++ ";" ++ showSep ";" (map T.unpack impl) ++ "}"
-    showCGJS' (MethodN m) = "meth{" ++ showCGJS m ++ "}"
-    showCGJS' (ParentN p c) = "par{" ++ showCGJS p ++ ";" ++ show c ++ "}"
-    showCGJS' (CaseN fc c) = "case{" ++ showCGJS c ++ ";" ++ showFC' fc ++ "}"
-    showCGJS' (ElimN sn) = "elim{" ++ showCGJS sn ++ "}"
-    showCGJS' (ImplementationCtorN n) = "ictor{" ++ showCGJS n ++ "}"
-    showCGJS' (MetaN parent meta) =
-      "meta{" ++ showCGJS parent ++ ";" ++ showCGJS meta ++ "}"
-    showFC' (FC' NoFC) = ""
-    showFC' (FC' (FileFC f)) = "_" ++ cgFN f
-    showFC' (FC' (FC f s e))
-      | s == e = "_" ++ cgFN f ++ "_" ++ show (fst s) ++ "_" ++ show (snd s)
-      | otherwise =
-        "_" ++
-        cgFN f ++
-        "_" ++
-        show (fst s) ++
-        "_" ++ show (snd s) ++ "_" ++ show (fst e) ++ "_" ++ show (snd e)
-    cgFN =
-      concatMap
-        (\c ->
-           if not (isDigit c || isLetter c)
-             then "__"
-             else [c])
-showCGJS (SymRef i) = error "can't do codegen for a symbol reference"
-
-jsName :: Name -> Text
-jsName n =
-  let name = showCGJS n
-  in T.pack $ jsEscape name
 
 doCodegen :: LDefs -> LDecl -> Text
 doCodegen defs dd@(LFun _ n args def) = jsStmt2Text $ cgFun defs n args def
@@ -163,14 +112,14 @@ getNewCGName = do
   st <- get
   let v = lastIntName st + 1
   put $ st {lastIntName = v}
-  return $ T.pack $ "cgIdris_" ++ show v
+  return $ jsNameGenerated v
 
 getConsId :: Name -> State CGBodyState (Int, Int)
 getConsId n = do
   st <- get
   case lookupCtxtExact n (defs st) of
     Just (LConstructor _ conId arity) -> pure (conId, arity)
-    _ -> error $ "ups " ++ showCGJS n
+    _ -> error $ "ups " ++ (T.unpack $ jsName n)
 
 data BodyResTarget
   = ReturnBT
