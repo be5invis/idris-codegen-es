@@ -113,16 +113,17 @@ jsName n =
   in T.pack $ prefix ++ name
 
 doCodegen :: LDefs -> LDecl -> Text
-doCodegen defs (LFun _ n args def) = jsAst2Text $ cgFun defs n args def
+doCodegen defs (LFun _ n args def) = jsStmt2Text $ cgFun defs n args def
 doCodegen defs (LConstructor n i sz) = ""
 
-seqJs :: [JsAST] -> JsAST
+seqJs :: [JsStmt] -> JsStmt
 seqJs [] = JsEmpty
 seqJs (x:xs) = JsSeq x (seqJs xs)
 
 data CGBodyState = CGBodyState
   { defs :: LDefs
   , lastIntName :: Int
+  , reWrittenNames :: Map.Map Name JsExpr
   , currentFnNameAndArgs :: (Text, [Text])
   , isTailRec :: Bool
   }
@@ -147,7 +148,7 @@ data BodyResTarget
   | SetVarBT Text
   | GetExpBT
 
-cgFun :: LDefs -> Name -> [Name] -> LExp -> JsAST
+cgFun :: LDefs -> Name -> [Name] -> LExp -> JsStmt
 cgFun dfs n args def =
   let fnName = jsName n
       argNames = map jsName args
@@ -157,6 +158,7 @@ cgFun dfs n args def =
           (CGBodyState
            { defs = dfs
            , lastIntName = 0
+           , reWrittenNames = Map.empty
            , currentFnNameAndArgs = (fnName, argNames)
            , isTailRec = False
            })
@@ -168,17 +170,26 @@ cgFun dfs n args def =
        then JsFun fnName argNames body
        else JsDecConst fnName $ JsAppE (JsLambda [] body) []
 
-addRT :: BodyResTarget -> JsAST -> JsAST
+addRT :: BodyResTarget -> JsExpr -> JsStmt
 addRT ReturnBT x = JsReturn x
 addRT (DecVarBT n) x = JsDecLet n x
 addRT (SetVarBT n) x = JsSetVar n x
-addRT GetExpBT x = x
+addRT GetExpBT x = JsExprStmt x
 
-cgBody :: BodyResTarget -> LExp -> State CGBodyState ([JsAST], JsAST)
+cgName :: Name -> State CGBodyState JsExpr
+cgName b = do
+  st <- get
+  case Map.lookup b (reWrittenNames st) of
+    Just e -> pure e
+    _ -> pure $ JsVar $ jsName b
+
+cgBody :: BodyResTarget -> LExp -> State CGBodyState ([JsStmt], JsStmt)
 cgBody rt (LV (Glob n)) = do
   st <- get
   case (lookupCtxtExact n (defs st)) of
-    Just (LFun _ _ [a] d) -> pure $ ([], addRT rt $ JsVar $ jsName n)
+    Just (LFun _ _ [a] d) -> do
+      nm <- cgName n
+      pure $ ([], addRT rt nm)
     _ -> cgBody rt (LApp False (LV (Glob n)) []) -- recurry
 cgBody rt (LApp _ (LV (Glob fn)) args) = do
   let fname = jsName fn
@@ -190,36 +201,39 @@ cgBody rt (LApp _ (LV (Glob fn)) args) = do
     (True, ReturnBT) -> do
       put $ st {isTailRec = True}
       vars <- sequence $ map (\_ -> getNewCGName) argN
-      let calcs = map (\(n, v) -> JsDecConst n v) (zip vars (map snd z))
+      let calcs =
+            map
+              (\(n, v) -> JsDecConst n v)
+              (zip vars (map (jsStmt2Expr . snd) z))
       let calcsToArgs = map (\(n, v) -> JsSetVar n (JsVar v)) (zip argN vars)
       pure (preDecs ++ calcs ++ calcsToArgs, JsContinue)
-    _ -> pure $ (preDecs, addRT rt $ formApp (defs st) fn (map snd z))
+    _ -> do
+      app <- formApp fn (map (jsStmt2Expr . snd) z)
+      pure $ (preDecs, addRT rt app)
 cgBody rt (LForce (LLazyApp n args)) = cgBody rt (LApp False (LV (Glob n)) args)
 cgBody rt (LLazyApp fn args) = do
   st <- get
   z <- mapM (cgBody GetExpBT) args
   let preDecs = concat $ map fst z
   let na = map (T.pack . ("$" ++) . show) $ take (length z) [1 ..]
+  app <- formApp fn (map JsVar na)
   pure
     ( preDecs
-    , JsAppE
-        (JsLambda (na) $ JsReturn $ jsLazy $ formApp (defs st) fn (map JsVar na))
-        (map snd z))
-  -- (d, v) <- cgBody ReturnBT (LApp False (LV (Glob n)) args)
-  -- pure ([], addRT rt $ JsLazy $ JsSeq (seqJs d) v)
+    , addRT rt $
+      JsAppE (JsLambda (na) $ JsReturn $ jsLazy app) (map (jsStmt2Expr . snd) z))
 cgBody rt (LForce e) = do
   (d, v) <- cgBody GetExpBT e
-  pure (d, addRT rt $ JsForce v)
+  pure (d, addRT rt $ JsForce $ jsStmt2Expr v)
 cgBody rt (LLet n v sc) = do
   (d1, v1) <- cgBody (DecVarBT $ jsName n) v
   (d2, v2) <- cgBody rt sc
   pure $ ((d1 ++ v1 : d2), v2)
 cgBody rt (LProj e i) = do
   (d, v) <- cgBody GetExpBT e
-  pure $ (d, addRT rt $ JsProp v (T.pack $ "$" ++ (show $ i + 1)))
+  pure $ (d, addRT rt $ JsProp (jsStmt2Expr v) (T.pack $ "$" ++ (show $ i + 1)))
 cgBody rt (LCon _ conId n args) = do
   z <- mapM (cgBody GetExpBT) args
-  con <- formCon n (map snd z)
+  con <- formCon n (map (jsStmt2Expr . snd) z)
   pure $ (concat $ map fst z, addRT rt con)
 cgBody rt (LCase _ e alts) = do
   (d, v) <- cgBody GetExpBT e
@@ -229,28 +243,30 @@ cgBody rt (LCase _ e alts) = do
   let sw =
         case sw' of
           (Just x) -> x
-          Nothing -> JsNull
-  let decSw = JsDecLet swName v
+          Nothing -> JsExprStmt JsNull
+  let decSw = JsDecLet swName $ jsStmt2Expr v
   case rt of
     ReturnBT -> pure (d ++ [decSw], sw)
     (DecVarBT nvar) -> pure (d ++ [decSw, JsDecLet nvar JsNull], sw)
     (SetVarBT nvar) -> pure (d ++ [decSw], sw)
-    GetExpBT -> pure (d ++ [decSw, JsDecLet resName JsNull, sw], JsVar resName)
+    GetExpBT ->
+      pure
+        (d ++ [decSw, JsDecLet resName JsNull, sw], JsExprStmt $ JsVar resName)
 cgBody rt (LConst c) = pure ([], (addRT rt) $ cgConst c)
 cgBody rt (LOp op args) = do
   z <- mapM (cgBody GetExpBT) args
-  pure $ (concat $ map fst z, addRT rt $ cgOp op (map snd z))
+  pure $ (concat $ map fst z, addRT rt $ cgOp op (map (jsStmt2Expr . snd) z))
 cgBody rt LNothing = pure ([], addRT rt JsNull)
 cgBody rt (LError x) = pure ([JsError $ JsStr $ T.pack $ x], addRT rt JsNull)
 cgBody rt x@(LForeign dres (FStr code) args) = do
   z <- mapM (cgBody GetExpBT) (map snd args)
-  let jsArgs = map cgForeignArg (zip (map fst args) (map snd z))
+  let jsArgs = map cgForeignArg (zip (map fst args) (map (jsStmt2Expr . snd) z))
   pure $
     ( concat $ map fst z
     , addRT rt $ cgForeignRes dres $ JsForeign (T.pack code) jsArgs)
 cgBody _ x = error $ "Instruction " ++ show x ++ " not compilable yet"
 
-formCon :: Name -> [JsAST] -> State CGBodyState JsAST
+formCon :: Name -> [JsExpr] -> State CGBodyState JsExpr
 formCon n args = do
   case specialCased n of
     Just (ctor, test, match) -> pure $ ctor args
@@ -263,7 +279,7 @@ formCon n args = do
              zip (map (\i -> T.pack $ "$" ++ show i) [1 ..]) args
         else pure $ JsInt conId
 
-formConTest :: Name -> JsAST -> State CGBodyState JsAST
+formConTest :: Name -> JsExpr -> State CGBodyState JsExpr
 formConTest n x = do
   case specialCased n of
     Just (ctor, test, match) -> pure $ test x
@@ -275,58 +291,40 @@ formConTest n x = do
              JsBinOp "===" (JsProp x (T.pack "type")) (JsInt conId)
         else pure $ JsBinOp "===" x (JsInt conId)
 
-formApp :: LDefs -> Name -> [JsAST] -> JsAST
-formApp defs fn argsJS = do
+formApp :: Name -> [JsExpr] -> State CGBodyState JsExpr
+formApp fn argsJS = do
+  st <- get
   let alen = length argsJS
-  let fname = jsName fn
-  case (lookupCtxtExact fn defs) of
+  fname <- cgName fn
+  case (lookupCtxtExact fn $ defs st) of
     Just (LFun _ _ ps _)
-      | (length ps) == 0 && alen == 0 -> JsVar fname
+      | (length ps) == 0 && alen == 0 -> pure fname
       | (length ps) == 0 && alen > 0 ->
-        jsCurryApp (JsVar fname) (drop (length ps) argsJS)
-      | (length ps) == alen -> jsAppN fname argsJS
+        pure $ jsCurryApp (fname) (drop (length ps) argsJS)
+      | (length ps) == alen -> pure $ JsAppE fname argsJS
       | (length ps) < alen ->
+        pure $
         jsCurryApp
-          (jsAppN fname (take (length ps) argsJS))
+          (JsAppE fname (take (length ps) argsJS))
           (drop (length ps) argsJS)
       | (length ps) > alen -> do
         let existings = map (T.pack . ("$h" ++) . show) $ take alen [1 ..]
         let missings =
               map (T.pack . ("$m" ++) . show) $ take ((length ps) - alen) [1 ..]
-        JsAppE
-          (JsLambda existings $
-           JsReturn $
-           jsCurryLam missings $
-           jsAppN fname (map JsVar existings ++ map JsVar missings))
-          argsJS
-    _ -> jsCurryApp (JsVar fname) argsJS
+        pure $
+          JsAppE
+            (JsLambda existings $
+             JsReturn $
+             jsCurryLam missings $
+             JsAppE fname (map JsVar existings ++ map JsVar missings))
+            argsJS
+    _ -> pure $ jsCurryApp fname argsJS
 
-replaceMatchVars :: Name
-                 -> JsAST
-                 -> Map Text Int
-                 -> State CGBodyState (JsAST -> JsAST)
-replaceMatchVars n v d = do
-  st <- get
-  pure $ replaceMatchVars' (defs st) n v d
-  where
-    replaceMatchVars' :: LDefs
-                      -> Name
-                      -> JsAST
-                      -> Map Text Int
-                      -> (JsAST -> JsAST)
-    replaceMatchVars' dfs n v d z = transform f z
-      where
-        formProj :: JsAST -> Int -> JsAST
-        formProj v i =
-          case specialCased n of
-            Just (ctor, test, proj) -> proj v i
-            Nothing -> JsProp v (T.pack $ "$" ++ show i)
-        f :: JsAST -> JsAST
-        f (JsVar x) =
-          case Map.lookup x d of
-            Nothing -> (JsVar x)
-            Just i -> formProj v i
-        f x = x
+formProj :: Name -> JsExpr -> Int -> JsExpr
+formProj n v i =
+  case specialCased n of
+    Just (ctor, test, proj) -> proj v i
+    Nothing -> JsProp v (T.pack $ "$" ++ show i)
 
 altsRT :: Text -> BodyResTarget -> BodyResTarget
 altsRT rn ReturnBT = ReturnBT
@@ -334,15 +332,16 @@ altsRT rn (DecVarBT n) = SetVarBT n
 altsRT rn (SetVarBT n) = SetVarBT n
 altsRT rn GetExpBT = SetVarBT rn
 
-smartif :: JsAST -> JsAST -> Maybe JsAST -> JsAST
+smartif :: JsExpr -> JsStmt -> Maybe JsStmt -> JsStmt
 smartif cond conseq (Just alt) = JsIf cond conseq (Just alt)
 smartif cond conseq Nothing = conseq
 
 cgIfTree :: BodyResTarget
          -> Text
-         -> JsAST
+         -> JsExpr
          -> [LAlt]
-         -> State CGBodyState (Maybe JsAST)
+         -> State CGBodyState (Maybe JsStmt)
+cgIfTree _ _ _ [] = pure Nothing
 cgIfTree rt resName scrvar ((LConstCase t exp):r) = do
   (d, v) <- cgBody (altsRT resName rt) exp
   alternatives <- cgIfTree rt resName scrvar r
@@ -353,16 +352,25 @@ cgIfTree rt resName scrvar ((LDefaultCase exp):r) = do
   (d, v) <- cgBody (altsRT resName rt) exp
   pure $ Just $ JsSeq (seqJs d) v
 cgIfTree rt resName scrvar ((LConCase _ n args exp):r) = do
-  (d, v) <- cgBody (altsRT resName rt) exp
   alternatives <- cgIfTree rt resName scrvar r
   test <- formConTest n scrvar
-  replace <-
-    replaceMatchVars n scrvar (Map.fromList $ zip (map jsName args) [1 ..])
-  let branchBody = JsSeq (seqJs $ map replace d) (replace v)
+  st <- get
+  let rwn = reWrittenNames st
+  put $
+    st
+    { reWrittenNames =
+        foldl
+          (\m (n, j) -> Map.insert n (formProj n scrvar j) m)
+          rwn
+          (zip args [1 ..])
+    }
+  (d, v) <- cgBody (altsRT resName rt) exp
+  st1 <- get
+  put $ st1 {reWrittenNames = rwn}
+  let branchBody = JsSeq (seqJs d) v
   pure $ Just $ smartif test branchBody alternatives
-cgIfTree _ _ _ [] = pure Nothing
 
-cgForeignArg :: (FDesc, JsAST) -> JsAST
+cgForeignArg :: (FDesc, JsExpr) -> JsExpr
 cgForeignArg (FApp (UN "JS_IntT") _, v) = v
 cgForeignArg (FCon (UN "JS_Str"), v) = v
 cgForeignArg (FCon (UN "JS_Ptr"), v) = v
@@ -377,7 +385,7 @@ cgForeignArg (FApp (UN "JS_FnT") [_, FApp (UN "JS_Fn") [_, _, a, FApp (UN "JS_Fn
 cgForeignArg (desc, _) =
   error $ "Foreign arg type " ++ show desc ++ " not supported yet."
 
-cgForeignRes :: FDesc -> JsAST -> JsAST
+cgForeignRes :: FDesc -> JsExpr -> JsExpr
 cgForeignRes (FApp (UN "JS_IntT") _) x = x
 cgForeignRes (FCon (UN "JS_Unit")) x = x
 cgForeignRes (FCon (UN "JS_Str")) x = x
@@ -386,7 +394,7 @@ cgForeignRes (FCon (UN "JS_Float")) x = x
 cgForeignRes desc val =
   error $ "Foreign return type " ++ show desc ++ " not supported yet."
 
-cgConst :: Const -> JsAST
+cgConst :: Const -> JsExpr
 cgConst (I i) = JsInt i
 cgConst (BI i) = JsInteger i
 cgConst (Ch c) = JsInt $ ord c
@@ -400,7 +408,7 @@ cgConst x
   | isTypeConst x = JsInt 0
 cgConst x = error $ "Constant " ++ show x ++ " not compilable yet"
 
-cgOp :: PrimFn -> [JsAST] -> JsAST
+cgOp :: PrimFn -> [JsExpr] -> JsExpr
 cgOp (LPlus _) [l, r] = JsBinOp "+" l r
 cgOp (LMinus _) [l, r] = JsBinOp "-" l r
 cgOp (LTimes _) [l, r] = JsBinOp "*" l r

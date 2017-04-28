@@ -17,11 +17,11 @@ import IRTS.CodegenEs.JsAST
 import Idris.Core.TT
 
 -- special-cased constructors
-type SCtor = [JsAST] -> JsAST
+type SCtor = [JsExpr] -> JsExpr
 
-type STest = JsAST -> JsAST
+type STest = JsExpr -> JsExpr
 
-type SProj = JsAST -> Int -> JsAST
+type SProj = JsExpr -> Int -> JsExpr
 
 constructorOptimizeDB :: Map.Map Name (SCtor, STest, SProj)
 constructorOptimizeDB =
