@@ -81,14 +81,7 @@ codegenJs ci = do
   includes <- get_includes $ includes ci
   TIO.writeFile (outputFile ci) $
     T.concat
-      [ "\"use strict\";\n\n"
-      , includes
-      , "\n"
-      , js_aux_defs
-      , "\n"
-      , out
-      , "\n"
-      ]
+      ["\"use strict\";\n\n", includes, "\n", js_aux_defs, "\n", out, "\n"]
 
 doCodegen :: LDefs -> LDecl -> Text
 doCodegen defs dd@(LFun _ n args def) = jsStmt2Text $ cgFun defs n args def
@@ -320,17 +313,25 @@ formApp fn argsJS = do
         jsCurryApp
           (JsApp fname (take (length ps) argsJS))
           (drop (length ps) argsJS)
+      -- underapplication
       | (length ps) > alen -> do
         let existings = map (T.pack . ("$h" ++) . show) $ take alen [1 ..]
         let missings =
               map (T.pack . ("$m" ++) . show) $ take ((length ps) - alen) [1 ..]
-        pure $
-          JsApp
-            (JsLambda existings $
-             JsReturn $
-             jsCurryLam missings $
-             JsApp fname (map JsVar existings ++ map JsVar missings))
-            argsJS
+        case (alen, length ps) of
+          (0, 1) -> pure fname
+          (0, n) ->
+            pure $
+            jsCurryLam missings $
+            JsApp fname (map JsVar existings ++ map JsVar missings)
+          (m, n) ->
+            pure $
+            JsApp
+              (JsLambda existings $
+               JsReturn $
+               jsCurryLam missings $
+               JsApp fname (map JsVar existings ++ map JsVar missings))
+              argsJS
     _ -> pure $ jsCurryApp fname argsJS
 
 altHasNoProj :: LAlt -> Bool
