@@ -26,8 +26,6 @@ import GHC.Generics (Generic)
 
 deriving instance Typeable (LAlt' LExp)
 
-deriving instance Data (LAlt' LExp)
-
 deriving instance Typeable FDesc
 
 deriving instance Data FDesc
@@ -135,7 +133,7 @@ used_functions alldefs (next_name:rest) =
 extract_globs :: LDefs -> LDecl -> [Name]
 extract_globs defs (LConstructor _ _ _) = []
 extract_globs defs (LFun _ _ _ e) =
-  let f (LV (Glob x)) = Just x
+  let f (LV x) = Just x
       f (LLazyApp x _) = Just x
       f _ = Nothing
   in [x | Just x <- map f $ universe e, memberCtx x defs]

@@ -38,7 +38,6 @@ showCGJS (SN s) = showCGJS' s
     showCGJS' (MethodN m) = "meth{" ++ showCGJS m ++ "}"
     showCGJS' (ParentN p c) = "par{" ++ showCGJS p ++ ";" ++ show c ++ "}"
     showCGJS' (CaseN fc c) = "case{" ++ showCGJS c ++ ";" ++ showFC' fc ++ "}"
-    showCGJS' (ElimN sn) = "elim{" ++ showCGJS sn ++ "}"
     showCGJS' (ImplementationCtorN n) = "ictor{" ++ showCGJS n ++ "}"
     showCGJS' (MetaN parent meta) =
       "meta{" ++ showCGJS parent ++ ";" ++ showCGJS meta ++ "}"
