@@ -183,14 +183,14 @@ cgBody rt expr =
     expr -> cgBody' rt expr
 
 -- ordinary
-cgBody' rt (LV (Glob n)) = do
+cgBody' rt (LV n) = do
   st <- get
   case (lookupCtxtExact n (defs st)) of
     Just (LFun _ _ [a] d) -> do
       nm <- cgName n
       pure $ ([], addRT rt nm)
-    _ -> cgBody rt (LApp False (LV (Glob n)) []) -- recurry
-cgBody' rt (LApp _ (LV (Glob fn)) args) = do
+    _ -> cgBody rt (LApp False (LV n) []) -- recurry
+cgBody' rt (LApp _ (LV fn) args) = do
   let fname = jsName fn
   st <- get
   let (currFn, argN) = currentFnNameAndArgs st
@@ -211,7 +211,7 @@ cgBody' rt (LApp _ (LV (Glob fn)) args) = do
       app <- formApp fn (map (jsStmt2Expr . snd) z)
       pure $ (preDecs, addRT rt app)
 cgBody' rt (LForce (LLazyApp n args)) =
-  cgBody rt (LApp False (LV (Glob n)) args)
+  cgBody rt (LApp False (LV n) args)
 cgBody' rt (LLazyApp fn args) = do
   st <- get
   z <- mapM (cgBody GetExpBT) args
